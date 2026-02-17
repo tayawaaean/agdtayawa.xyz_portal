@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
+import { useRealtime } from "@/hooks/use-realtime";
 import {
   Table,
   TableBody,
@@ -50,6 +51,40 @@ export function TimesheetView({ entries: initialEntries }: TimesheetViewProps) {
   const [editDescription, setEditDescription] = useState("");
   const [editBillable, setEditBillable] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  // Realtime subscription for time_entries table
+  const userId = initialEntries[0]?.user_id;
+  useRealtime<TimeEntry>({
+    table: "time_entries",
+    ...(userId ? { filter: `user_id=eq.${userId}` } : {}),
+    onInsert: useCallback(async (record: TimeEntry) => {
+      // Fetch full record with joined project data
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("time_entries")
+        .select("*, project:projects(id, name, client:clients(company_name))")
+        .eq("id", record.id)
+        .single();
+      if (data) {
+        setEntries((prev) => {
+          if (prev.some((e) => e.id === data.id)) return prev;
+          return [data as EntryWithProject, ...prev];
+        });
+      }
+    }, []),
+    onUpdate: useCallback((record: TimeEntry) => {
+      setEntries((prev) =>
+        prev.map((e) => {
+          if (e.id !== record.id) return e;
+          const { project: _, ...fields } = record as any;
+          return { ...e, ...fields };
+        })
+      );
+    }, []),
+    onDelete: useCallback((record: TimeEntry) => {
+      setEntries((prev) => prev.filter((e) => e.id !== record.id));
+    }, []),
+  });
 
   const totalPages = Math.max(1, Math.ceil(entries.length / PAGE_SIZE));
   const paginatedEntries = entries.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);

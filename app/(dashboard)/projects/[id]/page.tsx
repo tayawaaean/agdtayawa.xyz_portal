@@ -41,6 +41,12 @@ export default async function ProjectDetailPage({
     .eq("project_id", id)
     .order("date", { ascending: false });
 
+  const { data: milestones } = await supabase
+    .from("project_milestones")
+    .select("*")
+    .eq("project_id", id)
+    .order("sort_order");
+
   return (
     <>
       <Header
@@ -53,6 +59,7 @@ export default async function ProjectDetailPage({
           project={project}
           clients={clients ?? []}
           timeEntries={timeEntries ?? []}
+          milestones={milestones ?? []}
           userId={session!.user.id}
           defaultRate={profile?.default_hourly_rate}
         />

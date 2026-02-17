@@ -44,6 +44,7 @@ export interface Project {
   name: string;
   type: ProjectType;
   rate: number | null;
+  currency: string;
   estimated_hours: number | null;
   deadline: string | null;
   status: ProjectStatus;
@@ -76,11 +77,34 @@ export interface TimeEntry {
   project?: Project;
 }
 
+export type MilestoneStatus =
+  | "pending"
+  | "in_progress"
+  | "completed"
+  | "invoiced"
+  | "paid";
+
+export interface ProjectMilestone {
+  id: string;
+  project_id: string;
+  user_id: string;
+  name: string;
+  description: string | null;
+  amount: number;
+  currency: string;
+  due_date: string | null;
+  status: MilestoneStatus;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Invoice {
   id: string;
   user_id: string;
   client_id: string | null;
   project_id: string | null;
+  milestone_id: string | null;
   invoice_number: string;
   status: InvoiceStatus;
   issue_date: string;

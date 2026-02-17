@@ -91,6 +91,22 @@ export function InvoiceDetail({
     if (error) {
       toast.error("Failed to update status");
     } else {
+      // If status changed to "paid", update linked milestone
+      if (status === "paid") {
+        const { data: invoiceRow } = await supabase
+          .from("invoices")
+          .select("milestone_id")
+          .eq("id", invoice.id)
+          .single();
+
+        if (invoiceRow?.milestone_id) {
+          await supabase
+            .from("project_milestones")
+            .update({ status: "paid" })
+            .eq("id", invoiceRow.milestone_id);
+        }
+      }
+
       setInvoice({ ...invoice, status: status as Invoice["status"] });
       toast.success(`Invoice marked as ${status}`);
       router.refresh();
@@ -134,6 +150,21 @@ export function InvoiceDetail({
         .from("invoices")
         .update({ status: "paid" })
         .eq("id", invoice.id);
+
+      // Fetch the invoice's milestone_id directly from DB to ensure we have it
+      const { data: invoiceRow } = await supabase
+        .from("invoices")
+        .select("milestone_id")
+        .eq("id", invoice.id)
+        .single();
+
+      if (invoiceRow?.milestone_id) {
+        await supabase
+          .from("project_milestones")
+          .update({ status: "paid" })
+          .eq("id", invoiceRow.milestone_id);
+      }
+
       setInvoice({ ...invoice, status: "paid", payments: newPayments });
     } else {
       setInvoice({ ...invoice, payments: newPayments });

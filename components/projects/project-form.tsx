@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
-import { PROJECT_STATUSES, PROJECT_TYPES } from "@/lib/constants";
+import { PROJECT_STATUSES, PROJECT_TYPES, CURRENCIES } from "@/lib/constants";
 import type { Project } from "@/lib/types";
 
 const projectSchema = z.object({
@@ -26,6 +26,7 @@ const projectSchema = z.object({
   client_id: z.string().optional(),
   type: z.enum(["fixed", "hourly", "retainer"]).default("hourly"),
   rate: z.coerce.number().min(0).optional().or(z.literal("")),
+  currency: z.string().default("PHP"),
   estimated_hours: z.coerce.number().min(0).optional().or(z.literal("")),
   deadline: z.string().optional(),
   status: z
@@ -68,6 +69,7 @@ export function ProjectForm({
       client_id: project?.client_id ?? "",
       type: project?.type ?? "hourly",
       rate: project?.rate ?? defaultRate ?? "",
+      currency: project?.currency ?? "PHP",
       estimated_hours: project?.estimated_hours ?? "",
       deadline: project?.deadline ?? "",
       status: project?.status ?? "not_started",
@@ -76,6 +78,7 @@ export function ProjectForm({
   });
 
   const projectType = watch("type");
+  const currency = watch("currency");
   const status = watch("status");
   const clientId = watch("client_id");
 
@@ -88,6 +91,7 @@ export function ProjectForm({
       client_id: data.client_id || null,
       type: data.type,
       rate: data.rate === "" ? null : Number(data.rate),
+      currency: data.currency,
       estimated_hours:
         data.estimated_hours === "" ? null : Number(data.estimated_hours),
       deadline: data.deadline || null,
@@ -180,7 +184,7 @@ export function ProjectForm({
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-3">
         <div className="space-y-2">
           <Label htmlFor="rate">Rate</Label>
           <Input
@@ -190,6 +194,24 @@ export function ProjectForm({
             min="0"
             {...register("rate")}
           />
+        </div>
+        <div className="space-y-2">
+          <Label>Currency</Label>
+          <Select
+            value={currency}
+            onValueChange={(val) => setValue("currency", val)}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {CURRENCIES.map((c) => (
+                <SelectItem key={c.value} value={c.value}>
+                  {c.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <div className="space-y-2">
           <Label htmlFor="estimated_hours">Estimated Hours</Label>

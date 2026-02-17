@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
+import { useRealtime } from "@/hooks/use-realtime";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
@@ -58,6 +59,27 @@ export function ExpenseTable({ expenses: initialExpenses, categories }: ExpenseT
   const [editDeductible, setEditDeductible] = useState(false);
   const [saving, setSaving] = useState(false);
   const [page, setPage] = useState(0);
+
+  // Realtime subscription for expenses table
+  const userId = initialExpenses[0]?.user_id;
+  useRealtime<Expense>({
+    table: "expenses",
+    ...(userId ? { filter: `user_id=eq.${userId}` } : {}),
+    onInsert: useCallback((record: Expense) => {
+      setExpenses((prev) => {
+        if (prev.some((e) => e.id === record.id)) return prev;
+        return [record, ...prev];
+      });
+    }, []),
+    onUpdate: useCallback((record: Expense) => {
+      setExpenses((prev) =>
+        prev.map((e) => (e.id === record.id ? { ...e, ...record } : e))
+      );
+    }, []),
+    onDelete: useCallback((record: Expense) => {
+      setExpenses((prev) => prev.filter((e) => e.id !== record.id));
+    }, []),
+  });
 
   async function handleDelete() {
     if (!deleteId) return;

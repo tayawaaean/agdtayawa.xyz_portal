@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { useRealtime } from "@/hooks/use-realtime";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,7 +35,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Plus, ChevronLeft, ChevronRight, Pencil, Trash2, Loader2, FolderKanban, PlayCircle, CircleDashed, CheckCircle2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
-import { STATUS_COLORS } from "@/lib/constants";
+import { STATUS_COLORS, CURRENCIES } from "@/lib/constants";
+import { formatCurrency } from "@/lib/utils";
 import type { Project, ProjectStatus, ProjectType } from "@/lib/types";
 import { NewProjectDialog } from "./new-project-dialog";
 
@@ -65,8 +67,42 @@ export function ProjectTable({
   const [editType, setEditType] = useState<ProjectType>("hourly");
   const [editStatus, setEditStatus] = useState<ProjectStatus>("not_started");
   const [editRate, setEditRate] = useState("");
+  const [editCurrency, setEditCurrency] = useState("PHP");
   const [editDeadline, setEditDeadline] = useState("");
   const [saving, setSaving] = useState(false);
+
+  // Realtime subscription for projects table
+  useRealtime<Project>({
+    table: "projects",
+    filter: `user_id=eq.${userId}`,
+    onInsert: useCallback(async (record: Project) => {
+      // Fetch full record with joined client data
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("projects")
+        .select("*, client:clients(id, company_name)")
+        .eq("id", record.id)
+        .single();
+      if (data) {
+        setProjects((prev) => {
+          if (prev.some((p) => p.id === data.id)) return prev;
+          return [data as ProjectWithClient, ...prev];
+        });
+      }
+    }, []),
+    onUpdate: useCallback((record: Project) => {
+      setProjects((prev) =>
+        prev.map((p) => {
+          if (p.id !== record.id) return p;
+          const { client: _, ...fields } = record as any;
+          return { ...p, ...fields };
+        })
+      );
+    }, []),
+    onDelete: useCallback((record: Project) => {
+      setProjects((prev) => prev.filter((p) => p.id !== record.id));
+    }, []),
+  });
 
   const statusCounts = {
     all: projects.length,
@@ -88,6 +124,7 @@ export function ProjectTable({
     setEditType(project.type);
     setEditStatus(project.status);
     setEditRate(project.rate?.toString() || "");
+    setEditCurrency(project.currency || "PHP");
     setEditDeadline(project.deadline || "");
   }
 
@@ -107,6 +144,7 @@ export function ProjectTable({
         type: editType,
         status: editStatus,
         rate,
+        currency: editCurrency,
         deadline: editDeadline || null,
       })
       .eq("id", editProject.id);
@@ -117,7 +155,7 @@ export function ProjectTable({
       setProjects((prev) =>
         prev.map((p) =>
           p.id === editProject.id
-            ? { ...p, name: editName.trim(), type: editType, status: editStatus, rate, deadline: editDeadline || null }
+            ? { ...p, name: editName.trim(), type: editType, status: editStatus, rate, currency: editCurrency, deadline: editDeadline || null }
             : p
         )
       );
@@ -369,10 +407,23 @@ export function ProjectTable({
                 </Select>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
               <div className="space-y-2">
-                <Label>Rate ($/hr)</Label>
+                <Label>Rate</Label>
                 <Input type="number" step="0.01" min="0" value={editRate} onChange={(e) => setEditRate(e.target.value)} placeholder="0.00" />
+              </div>
+              <div className="space-y-2">
+                <Label>Currency</Label>
+                <Select value={editCurrency} onValueChange={setEditCurrency}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CURRENCIES.map((c) => (
+                      <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label>Deadline</Label>

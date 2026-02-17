@@ -41,6 +41,10 @@ interface InvoiceBuilderProps {
   lastInvoiceNumber: string | null;
   variant?: "page" | "modal";
   onSuccess?: () => void;
+  milestoneId?: string;
+  milestoneData?: { name: string; description: string | null; amount: number; currency: string };
+  milestoneProjectId?: string;
+  milestoneProjectClientId?: string | null;
 }
 
 export function InvoiceBuilder({
@@ -51,6 +55,10 @@ export function InvoiceBuilder({
   lastInvoiceNumber,
   variant = "page",
   onSuccess,
+  milestoneId,
+  milestoneData,
+  milestoneProjectId,
+  milestoneProjectClientId,
 }: InvoiceBuilderProps) {
   const router = useRouter();
   const today = new Date().toISOString().split("T")[0];
@@ -59,19 +67,31 @@ export function InvoiceBuilder({
     profile?.invoice_prefix ?? "INV"
   );
 
-  const [clientId, setClientId] = useState("");
-  const [projectId, setProjectId] = useState("");
+  const [clientId, setClientId] = useState(milestoneProjectClientId ?? "");
+  const [projectId, setProjectId] = useState(milestoneProjectId ?? "");
   const [issueDate, setIssueDate] = useState(today);
   const [dueDate, setDueDate] = useState("");
   const [paymentTerms, setPaymentTerms] = useState(
     profile?.default_payment_terms ?? "Due within 30 days"
   );
   const [notes, setNotes] = useState(profile?.default_invoice_notes ?? "");
-  const [currency, setCurrency] = useState(profile?.default_currency ?? "PHP");
+  const [currency, setCurrency] = useState(
+    milestoneData?.currency ?? profile?.default_currency ?? "PHP"
+  );
   const [taxRate, setTaxRate] = useState(0);
-  const [items, setItems] = useState<LineItem[]>([
-    { description: "", quantity: 1, unit_price: 0 },
-  ]);
+  const [items, setItems] = useState<LineItem[]>(
+    milestoneData
+      ? [
+          {
+            description: milestoneData.description
+              ? `${milestoneData.name} - ${milestoneData.description}`
+              : milestoneData.name,
+            quantity: 1,
+            unit_price: milestoneData.amount,
+          },
+        ]
+      : [{ description: "", quantity: 1, unit_price: 0 }]
+  );
   const [saving, setSaving] = useState(false);
   const [showTimeImport, setShowTimeImport] = useState(false);
   const [importProjectId, setImportProjectId] = useState("");
@@ -159,6 +179,7 @@ export function InvoiceBuilder({
         user_id: userId,
         client_id: clientId,
         project_id: projectId || null,
+        milestone_id: milestoneId || null,
         invoice_number: invoiceNumber,
         status,
         issue_date: issueDate,
@@ -200,6 +221,14 @@ export function InvoiceBuilder({
       }
     }
 
+    // Update milestone status to "invoiced" if created from a milestone
+    if (milestoneId) {
+      await supabase
+        .from("project_milestones")
+        .update({ status: "invoiced" })
+        .eq("id", milestoneId);
+    }
+
     toast.success(`Invoice ${invoiceNumber} created`);
     if (variant === "modal" && onSuccess) {
       onSuccess();
@@ -209,10 +238,12 @@ export function InvoiceBuilder({
     router.refresh();
   }
 
+  const isModal = variant === "modal";
+
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className={`space-y-6 ${isModal ? "" : "max-w-4xl"}`}>
       {/* Header Info */}
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className={`grid gap-6 ${isModal ? "grid-cols-1" : "lg:grid-cols-2"}`}>
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Invoice Details</CardTitle>
@@ -279,41 +310,56 @@ export function InvoiceBuilder({
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">From</CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm space-y-1">
-            <p className="font-medium">
-              {profile?.business_name || profile?.full_name || "Your Business"}
-            </p>
-            {profile?.email && <p>{profile.email}</p>}
-            {profile?.phone && <p>{profile.phone}</p>}
-            {profile?.address && (
-              <p className="whitespace-pre-line">{profile.address}</p>
-            )}
-            {profile?.tax_id_tin && <p>TIN: {profile.tax_id_tin}</p>}
-          </CardContent>
-        </Card>
+        {!isModal && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">From</CardTitle>
+            </CardHeader>
+            <CardContent className="text-sm space-y-1">
+              <p className="font-medium">
+                {profile?.business_name || profile?.full_name || "Your Business"}
+              </p>
+              {profile?.email && <p>{profile.email}</p>}
+              {profile?.phone && <p>{profile.phone}</p>}
+              {profile?.address && (
+                <p className="whitespace-pre-line">{profile.address}</p>
+              )}
+              {profile?.tax_id_tin && <p>TIN: {profile.tax_id_tin}</p>}
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* Line Items */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-base">Line Items</CardTitle>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowTimeImport(true)}
-          >
-            <Clock className="mr-2 h-4 w-4" />
-            Import Time Entries
-          </Button>
+          {!isModal && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowTimeImport(true)}
+            >
+              <Clock className="mr-2 h-4 w-4" />
+              Import Time Entries
+            </Button>
+          )}
         </CardHeader>
         <CardContent className="space-y-3">
+          {/* Column headers */}
+          <div className={`${isModal ? "hidden sm:grid sm:grid-cols-[1fr_80px_100px_auto] gap-2" : "hidden sm:flex gap-2"} text-xs text-muted-foreground`}>
+            <span className={isModal ? "" : "flex-1"}>Description</span>
+            <span className={isModal ? "text-center" : "w-20 text-center"}>Qty</span>
+            <span className={isModal ? "text-center" : "w-28 text-center"}>Price</span>
+            {!isModal && <span className="w-28 text-right">Amount</span>}
+            {!isModal && <span className="w-9"></span>}
+          </div>
           {items.map((item, index) => (
-            <div key={index} className="flex gap-2 items-start">
-              <div className="flex-1">
+            <div key={index} className={isModal
+              ? "grid gap-2 sm:grid-cols-[1fr_80px_100px_auto] items-start border-b pb-3 last:border-0 last:pb-0"
+              : "flex gap-2 items-start"
+            }>
+              <div className={isModal ? "" : "flex-1"}>
                 <Input
                   placeholder="Description"
                   value={item.description}
@@ -322,42 +368,46 @@ export function InvoiceBuilder({
                   }
                 />
               </div>
-              <div className="w-20">
-                <Input
-                  type="number"
-                  placeholder="Qty"
-                  step="0.01"
-                  min="0"
-                  value={item.quantity || ""}
-                  onChange={(e) =>
-                    updateItem(index, "quantity", Number(e.target.value))
-                  }
-                />
+              <div className={isModal ? "flex gap-2 sm:contents" : "contents"}>
+                <div className={isModal ? "flex-1 sm:flex-none" : "w-20"}>
+                  <Input
+                    type="number"
+                    placeholder="Qty"
+                    step="0.01"
+                    min="0"
+                    value={item.quantity || ""}
+                    onChange={(e) =>
+                      updateItem(index, "quantity", Number(e.target.value))
+                    }
+                  />
+                </div>
+                <div className={isModal ? "flex-1 sm:flex-none" : "w-28"}>
+                  <Input
+                    type="number"
+                    placeholder="Price"
+                    step="0.01"
+                    min="0"
+                    value={item.unit_price || ""}
+                    onChange={(e) =>
+                      updateItem(index, "unit_price", Number(e.target.value))
+                    }
+                  />
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="text-sm font-medium whitespace-nowrap pt-2 sm:pt-0">
+                    {formatCurrency(item.quantity * item.unit_price, currency)}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-9 w-9 text-destructive shrink-0"
+                    onClick={() => removeItem(index)}
+                    disabled={items.length === 1}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
-              <div className="w-28">
-                <Input
-                  type="number"
-                  placeholder="Price"
-                  step="0.01"
-                  min="0"
-                  value={item.unit_price || ""}
-                  onChange={(e) =>
-                    updateItem(index, "unit_price", Number(e.target.value))
-                  }
-                />
-              </div>
-              <div className="w-28 text-right pt-2 text-sm font-medium">
-                {formatCurrency(item.quantity * item.unit_price, currency)}
-              </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-9 w-9 text-destructive"
-                onClick={() => removeItem(index)}
-                disabled={items.length === 1}
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
             </div>
           ))}
           <Button variant="outline" size="sm" onClick={addItem}>
@@ -403,7 +453,7 @@ export function InvoiceBuilder({
             <Textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              rows={3}
+              rows={isModal ? 2 : 3}
               placeholder="Additional notes or terms..."
             />
           </div>
@@ -427,71 +477,73 @@ export function InvoiceBuilder({
       </div>
 
       {/* Time Import Dialog */}
-      <Dialog open={showTimeImport} onOpenChange={setShowTimeImport}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Import Time Entries</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Select Project</Label>
-              <Select
-                value={importProjectId}
-                onValueChange={setImportProjectId}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select project" />
-                </SelectTrigger>
-                <SelectContent>
-                  {projects.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <Button
-              onClick={loadTimeEntries}
-              disabled={!importProjectId || loadingEntries}
-              variant="outline"
-              className="w-full"
-            >
-              {loadingEntries && (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              )}
-              Load Entries
-            </Button>
-            {importEntries.length > 0 && (
-              <div className="text-sm space-y-1 max-h-48 overflow-auto">
-                {importEntries.map((entry) => (
-                  <div
-                    key={entry.id}
-                    className="flex justify-between border-b pb-1"
-                  >
-                    <span>
-                      {entry.description || "Work"} ({entry.date})
-                    </span>
-                    <span className="font-medium">{entry.hours}h</span>
-                  </div>
-                ))}
-                <p className="font-medium pt-2">
-                  Total:{" "}
-                  {importEntries.reduce((s, e) => s + e.hours, 0).toFixed(1)}h
-                </p>
+      {!isModal && (
+        <Dialog open={showTimeImport} onOpenChange={setShowTimeImport}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Import Time Entries</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Select Project</Label>
+                <Select
+                  value={importProjectId}
+                  onValueChange={setImportProjectId}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select project" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {projects.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button
-              onClick={importTimeEntries}
-              disabled={importEntries.length === 0}
-            >
-              Import {importEntries.length} Entries
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+              <Button
+                onClick={loadTimeEntries}
+                disabled={!importProjectId || loadingEntries}
+                variant="outline"
+                className="w-full"
+              >
+                {loadingEntries && (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                )}
+                Load Entries
+              </Button>
+              {importEntries.length > 0 && (
+                <div className="text-sm space-y-1 max-h-48 overflow-auto">
+                  {importEntries.map((entry) => (
+                    <div
+                      key={entry.id}
+                      className="flex justify-between border-b pb-1"
+                    >
+                      <span>
+                        {entry.description || "Work"} ({entry.date})
+                      </span>
+                      <span className="font-medium">{entry.hours}h</span>
+                    </div>
+                  ))}
+                  <p className="font-medium pt-2">
+                    Total:{" "}
+                    {importEntries.reduce((s, e) => s + e.hours, 0).toFixed(1)}h
+                  </p>
+                </div>
+              )}
+            </div>
+            <DialogFooter>
+              <Button
+                onClick={importTimeEntries}
+                disabled={importEntries.length === 0}
+              >
+                Import {importEntries.length} Entries
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useRealtime } from "@/hooks/use-realtime";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -58,6 +59,27 @@ export function ClientTable({ clients: initialClients }: ClientTableProps) {
   const [editStatus, setEditStatus] = useState<ClientStatus>("active");
   const [saving, setSaving] = useState(false);
   const [page, setPage] = useState(0);
+
+  // Realtime subscription for clients table
+  const userId = initialClients[0]?.user_id;
+  useRealtime<Client>({
+    table: "clients",
+    ...(userId ? { filter: `user_id=eq.${userId}` } : {}),
+    onInsert: useCallback((record: Client) => {
+      setClients((prev) => {
+        if (prev.some((c) => c.id === record.id)) return prev;
+        return [record, ...prev];
+      });
+    }, []),
+    onUpdate: useCallback((record: Client) => {
+      setClients((prev) =>
+        prev.map((c) => (c.id === record.id ? { ...c, ...record } : c))
+      );
+    }, []),
+    onDelete: useCallback((record: Client) => {
+      setClients((prev) => prev.filter((c) => c.id !== record.id));
+    }, []),
+  });
 
   const statusCounts = {
     all: clients.length,

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
+import { useRealtime } from "@/hooks/use-realtime";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,6 +34,26 @@ export function ExpenseCategories({
   const [editName, setEditName] = useState("");
   const [loading, setLoading] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
+
+  // Realtime subscription for expense_categories table
+  useRealtime<ExpenseCategory>({
+    table: "expense_categories",
+    filter: `user_id=eq.${userId}`,
+    onInsert: useCallback((record: ExpenseCategory) => {
+      setCategories((prev) => {
+        if (prev.some((c) => c.id === record.id)) return prev;
+        return [...prev, record];
+      });
+    }, []),
+    onUpdate: useCallback((record: ExpenseCategory) => {
+      setCategories((prev) =>
+        prev.map((c) => (c.id === record.id ? { ...c, ...record } : c))
+      );
+    }, []),
+    onDelete: useCallback((record: ExpenseCategory) => {
+      setCategories((prev) => prev.filter((c) => c.id !== record.id));
+    }, []),
+  });
 
   const supabase = createClient();
 

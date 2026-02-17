@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { useRealtime } from "@/hooks/use-realtime";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -62,6 +63,40 @@ export function InvoiceTable({ invoices: initialInvoices }: InvoiceTableProps) {
   const [editDueDate, setEditDueDate] = useState("");
   const [editNotes, setEditNotes] = useState("");
   const [saving, setSaving] = useState(false);
+
+  // Realtime subscription for invoices table
+  const userId = initialInvoices[0]?.user_id;
+  useRealtime<Invoice>({
+    table: "invoices",
+    ...(userId ? { filter: `user_id=eq.${userId}` } : {}),
+    onInsert: useCallback(async (record: Invoice) => {
+      // Fetch full record with joined client data
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("invoices")
+        .select("*, client:clients(company_name)")
+        .eq("id", record.id)
+        .single();
+      if (data) {
+        setInvoices((prev) => {
+          if (prev.some((i) => i.id === data.id)) return prev;
+          return [data as InvoiceWithClient, ...prev];
+        });
+      }
+    }, []),
+    onUpdate: useCallback((record: Invoice) => {
+      setInvoices((prev) =>
+        prev.map((i) => {
+          if (i.id !== record.id) return i;
+          const { client: _, ...fields } = record as any;
+          return { ...i, ...fields };
+        })
+      );
+    }, []),
+    onDelete: useCallback((record: Invoice) => {
+      setInvoices((prev) => prev.filter((i) => i.id !== record.id));
+    }, []),
+  });
 
   // Auto-detect overdue
   const today = new Date().toISOString().split("T")[0];
@@ -143,6 +178,22 @@ export function InvoiceTable({ invoices: initialInvoices }: InvoiceTableProps) {
     if (error) {
       toast.error("Failed to update: " + error.message);
     } else {
+      // If status changed to "paid", update linked milestone
+      if (editStatus === "paid") {
+        const { data: invoiceRow } = await supabase
+          .from("invoices")
+          .select("milestone_id")
+          .eq("id", editInvoice.id)
+          .single();
+
+        if (invoiceRow?.milestone_id) {
+          await supabase
+            .from("project_milestones")
+            .update({ status: "paid" })
+            .eq("id", invoiceRow.milestone_id);
+        }
+      }
+
       setInvoices((prev) =>
         prev.map((i) =>
           i.id === editInvoice.id

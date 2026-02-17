@@ -28,8 +28,9 @@ import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { STATUS_COLORS } from "@/lib/constants";
-import type { Project, TimeEntry } from "@/lib/types";
+import type { Project, TimeEntry, ProjectMilestone } from "@/lib/types";
 import { ProjectForm } from "./project-form";
+import { MilestoneCard } from "./milestone-card";
 
 const PAGE_SIZE = 10;
 
@@ -37,6 +38,7 @@ interface ProjectDetailProps {
   project: Project & { client?: { id: string; company_name: string } | null };
   clients: { id: string; company_name: string }[];
   timeEntries: TimeEntry[];
+  milestones: ProjectMilestone[];
   userId: string;
   defaultRate?: number | null;
 }
@@ -45,6 +47,7 @@ export function ProjectDetail({
   project,
   clients,
   timeEntries,
+  milestones,
   userId,
   defaultRate,
 }: ProjectDetailProps) {
@@ -68,10 +71,30 @@ export function ProjectDetail({
   const billableHours = entries
     .filter((e) => e.is_billable)
     .reduce((sum, e) => sum + e.hours, 0);
-  const totalBilled = billableHours * (project.rate || 0);
-  const budgetUsed = project.estimated_hours
-    ? (totalHours / project.estimated_hours) * 100
-    : 0;
+  // Milestone calculations
+  const milestoneTotalAmount = milestones.reduce((sum, m) => sum + m.amount, 0);
+  const milestoneCompletedAmount = milestones
+    .filter((m) => ["completed", "invoiced", "paid"].includes(m.status))
+    .reduce((sum, m) => sum + m.amount, 0);
+  const milestoneInvoicedAmount = milestones
+    .filter((m) => ["invoiced", "paid"].includes(m.status))
+    .reduce((sum, m) => sum + m.amount, 0);
+
+  // For hourly: billable hours * rate
+  // For fixed/retainer: sum of milestone amounts that have been invoiced or paid
+  const totalBilled =
+    project.type === "hourly"
+      ? billableHours * (project.rate || 0)
+      : milestoneInvoicedAmount;
+
+  const budgetUsed =
+    project.type === "hourly"
+      ? project.estimated_hours
+        ? (totalHours / project.estimated_hours) * 100
+        : 0
+      : milestoneTotalAmount > 0
+        ? (milestoneCompletedAmount / milestoneTotalAmount) * 100
+        : 0;
 
   async function handleDelete() {
     const supabase = createClient();
@@ -204,20 +227,31 @@ export function ProjectDetail({
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Total Billed</p>
-              <p className="text-lg font-bold">{formatCurrency(totalBilled)}</p>
+              <p className="text-lg font-bold">{formatCurrency(totalBilled, project.currency)}</p>
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">Rate</p>
+              <p className="text-sm text-muted-foreground">
+                {project.type === "hourly" ? "Rate" : "Fixed Price"}
+              </p>
               <p className="text-lg font-bold">
-                {project.rate ? formatCurrency(project.rate) + "/hr" : "-"}
+                {project.rate
+                  ? formatCurrency(project.rate, project.currency) +
+                    (project.type === "hourly" ? "/hr" : "")
+                  : "-"}
               </p>
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">Budget Used</p>
+              <p className="text-sm text-muted-foreground">
+                {project.type === "hourly" ? "Budget Used" : "Milestone Progress"}
+              </p>
               <p className="text-lg font-bold">
-                {project.estimated_hours
-                  ? `${budgetUsed.toFixed(0)}%`
-                  : "-"}
+                {project.type === "hourly"
+                  ? project.estimated_hours
+                    ? `${budgetUsed.toFixed(0)}%`
+                    : "-"
+                  : milestoneTotalAmount > 0
+                    ? `${budgetUsed.toFixed(0)}%`
+                    : "-"}
               </p>
             </div>
           </div>
@@ -326,6 +360,14 @@ export function ProjectDetail({
           )}
         </CardContent>
       </Card>
+
+      {/* Milestones */}
+      <MilestoneCard
+        projectId={project.id}
+        userId={userId}
+        defaultCurrency={project.currency}
+        initialMilestones={milestones}
+      />
 
       {/* Edit Project Dialog */}
       <Dialog open={editing} onOpenChange={setEditing}>

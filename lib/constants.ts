@@ -4,6 +4,7 @@ import type {
   ProjectType,
   InvoiceStatus,
   PaymentMethod,
+  MilestoneStatus,
 } from "./types";
 
 // Client statuses
@@ -38,6 +39,15 @@ export const INVOICE_STATUSES: { value: InvoiceStatus; label: string }[] = [
   { value: "paid", label: "Paid" },
   { value: "overdue", label: "Overdue" },
   { value: "cancelled", label: "Cancelled" },
+];
+
+// Milestone statuses
+export const MILESTONE_STATUSES: { value: MilestoneStatus; label: string }[] = [
+  { value: "pending", label: "Pending" },
+  { value: "in_progress", label: "In Progress" },
+  { value: "completed", label: "Completed" },
+  { value: "invoiced", label: "Invoiced" },
+  { value: "paid", label: "Paid" },
 ];
 
 // Payment methods
@@ -107,6 +117,9 @@ export const STATUS_COLORS: Record<string, string> = {
   not_started: "bg-gray-100 text-gray-800",
   in_progress: "bg-blue-100 text-blue-800",
   cancelled: "bg-red-100 text-red-800",
+  // Milestone statuses
+  pending: "bg-yellow-100 text-yellow-800",
+  invoiced: "bg-indigo-100 text-indigo-800",
   // Invoice statuses
   draft: "bg-gray-100 text-gray-800",
   sent: "bg-blue-100 text-blue-800",
