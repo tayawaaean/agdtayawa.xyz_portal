@@ -298,10 +298,10 @@ export function InvoiceDetail({
                     <TableCell>{item.description}</TableCell>
                     <TableCell className="text-right">{item.quantity}</TableCell>
                     <TableCell className="text-right">
-                      {formatCurrency(item.unit_price)}
+                      {formatCurrency(item.unit_price, invoice.currency)}
                     </TableCell>
                     <TableCell className="text-right font-medium">
-                      {formatCurrency(item.amount)}
+                      {formatCurrency(item.amount, invoice.currency)}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -313,29 +313,29 @@ export function InvoiceDetail({
           <div className="flex flex-col items-end space-y-1 text-sm mb-6">
             <div className="flex gap-8">
               <span className="text-muted-foreground">Subtotal</span>
-              <span>{formatCurrency(invoice.subtotal)}</span>
+              <span>{formatCurrency(invoice.subtotal, invoice.currency)}</span>
             </div>
             {invoice.tax_amount > 0 && (
               <div className="flex gap-8">
                 <span className="text-muted-foreground">
                   Tax ({(invoice.tax_rate * 100).toFixed(1)}%)
                 </span>
-                <span>{formatCurrency(invoice.tax_amount)}</span>
+                <span>{formatCurrency(invoice.tax_amount, invoice.currency)}</span>
               </div>
             )}
             <div className="flex gap-8 text-lg font-bold border-t pt-1">
               <span>Total</span>
-              <span>{formatCurrency(invoice.total)}</span>
+              <span>{formatCurrency(invoice.total, invoice.currency)}</span>
             </div>
             {totalPaid > 0 && (
               <>
                 <div className="flex gap-8 text-green-600">
                   <span>Paid</span>
-                  <span>- {formatCurrency(totalPaid)}</span>
+                  <span>- {formatCurrency(totalPaid, invoice.currency)}</span>
                 </div>
                 <div className="flex gap-8 font-bold">
                   <span>Balance Due</span>
-                  <span>{formatCurrency(remaining)}</span>
+                  <span>{formatCurrency(remaining, invoice.currency)}</span>
                 </div>
               </>
             )}
@@ -406,7 +406,7 @@ export function InvoiceDetail({
                       </TableCell>
                       <TableCell>{payment.reference_note || "-"}</TableCell>
                       <TableCell className="text-right font-medium">
-                        {formatCurrency(payment.amount)}
+                        {formatCurrency(payment.amount, invoice.currency)}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -434,7 +434,7 @@ export function InvoiceDetail({
                 onChange={(e) => setPayAmount(e.target.value)}
               />
               <p className="text-xs text-muted-foreground">
-                Remaining balance: {formatCurrency(remaining)}
+                Remaining balance: {formatCurrency(remaining, invoice.currency)}
               </p>
             </div>
             <div className="space-y-2">

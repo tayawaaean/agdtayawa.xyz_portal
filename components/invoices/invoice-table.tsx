@@ -313,7 +313,7 @@ export function InvoiceTable({ invoices: initialInvoices }: InvoiceTableProps) {
                     {inv.due_date ? formatDate(inv.due_date) : "-"}
                   </TableCell>
                   <TableCell className="text-right font-medium">
-                    {formatCurrency(inv.total)}
+                    {formatCurrency(inv.total, inv.currency)}
                   </TableCell>
                   <TableCell>
                     <Badge

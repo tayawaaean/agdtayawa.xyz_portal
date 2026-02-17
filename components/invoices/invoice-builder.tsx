@@ -67,6 +67,7 @@ export function InvoiceBuilder({
     profile?.default_payment_terms ?? "Due within 30 days"
   );
   const [notes, setNotes] = useState(profile?.default_invoice_notes ?? "");
+  const [currency, setCurrency] = useState(profile?.default_currency ?? "PHP");
   const [taxRate, setTaxRate] = useState(0);
   const [items, setItems] = useState<LineItem[]>([
     { description: "", quantity: 1, unit_price: 0 },
@@ -168,6 +169,7 @@ export function InvoiceBuilder({
         total,
         notes: notes || null,
         payment_terms: paymentTerms || null,
+        currency,
       })
       .select()
       .single();
@@ -253,12 +255,26 @@ export function InvoiceBuilder({
                 />
               </div>
             </div>
-            <div className="space-y-2">
-              <Label>Payment Terms</Label>
-              <Input
-                value={paymentTerms}
-                onChange={(e) => setPaymentTerms(e.target.value)}
-              />
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Payment Terms</Label>
+                <Input
+                  value={paymentTerms}
+                  onChange={(e) => setPaymentTerms(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Currency</Label>
+                <Select value={currency} onValueChange={setCurrency}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="PHP">PHP (₱)</SelectItem>
+                    <SelectItem value="USD">USD ($)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -331,7 +347,7 @@ export function InvoiceBuilder({
                 />
               </div>
               <div className="w-28 text-right pt-2 text-sm font-medium">
-                {formatCurrency(item.quantity * item.unit_price)}
+                {formatCurrency(item.quantity * item.unit_price, currency)}
               </div>
               <Button
                 variant="ghost"
@@ -357,7 +373,7 @@ export function InvoiceBuilder({
           <div className="flex flex-col items-end space-y-2">
             <div className="flex gap-8 text-sm">
               <span className="text-muted-foreground">Subtotal</span>
-              <span className="font-medium">{formatCurrency(subtotal)}</span>
+              <span className="font-medium">{formatCurrency(subtotal, currency)}</span>
             </div>
             <div className="flex gap-4 items-center text-sm">
               <span className="text-muted-foreground">Tax Rate (%)</span>
@@ -369,11 +385,11 @@ export function InvoiceBuilder({
                 value={taxRate || ""}
                 onChange={(e) => setTaxRate(Number(e.target.value) || 0)}
               />
-              <span className="font-medium">{formatCurrency(taxAmount)}</span>
+              <span className="font-medium">{formatCurrency(taxAmount, currency)}</span>
             </div>
             <div className="flex gap-8 text-lg font-bold border-t pt-2">
               <span>Total</span>
-              <span>{formatCurrency(total)}</span>
+              <span>{formatCurrency(total, currency)}</span>
             </div>
           </div>
         </CardContent>

@@ -91,6 +91,7 @@ export interface Invoice {
   total: number;
   notes: string | null;
   payment_terms: string | null;
+  currency: string;
   created_at: string;
   updated_at: string;
   // Joined fields
