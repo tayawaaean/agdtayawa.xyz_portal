@@ -19,11 +19,14 @@ import {
 } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Loader2, Upload } from "lucide-react";
-import { PAYMENT_METHODS } from "@/lib/constants";
+import { Loader2, Upload, Landmark, CreditCard } from "lucide-react";
+import { PAYMENT_METHODS, CURRENCIES } from "@/lib/constants";
+import { updateAccountBalance } from "@/lib/account-balance";
+import type { AccountType } from "@/lib/types";
 
 const expenseSchema = z.object({
   amount: z.coerce.number().min(0.01, "Amount is required"),
+  currency: z.string().default("PHP"),
   date: z.string().min(1, "Date is required"),
   category: z.string().min(1, "Category is required"),
   vendor: z.string().optional(),
@@ -31,19 +34,28 @@ const expenseSchema = z.object({
   payment_method: z.string().optional(),
   is_tax_deductible: z.boolean(),
   project_id: z.string().optional(),
+  account_id: z.string().optional(),
 });
 
 type ExpenseFormData = z.infer<typeof expenseSchema>;
+
+interface AccountOption {
+  id: string;
+  account_name: string;
+  account_type: AccountType;
+  currency: string;
+}
 
 interface ExpenseFormProps {
   userId: string;
   categories: string[];
   projects: { id: string; name: string }[];
+  accounts?: AccountOption[];
   variant?: "page" | "modal";
   onSuccess?: () => void;
 }
 
-export function ExpenseForm({ userId, categories, projects, variant = "page", onSuccess }: ExpenseFormProps) {
+export function ExpenseForm({ userId, categories, projects, accounts = [], variant = "page", onSuccess }: ExpenseFormProps) {
   const router = useRouter();
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const today = new Date().toISOString().split("T")[0];
@@ -59,6 +71,7 @@ export function ExpenseForm({ userId, categories, projects, variant = "page", on
     resolver: zodResolver(expenseSchema) as any,
     defaultValues: {
       amount: "" as unknown as number,
+      currency: "PHP",
       date: today,
       category: "",
       vendor: "",
@@ -66,12 +79,15 @@ export function ExpenseForm({ userId, categories, projects, variant = "page", on
       payment_method: "",
       is_tax_deductible: true,
       project_id: "",
+      account_id: "",
     },
   });
 
   const category = watch("category");
+  const currency = watch("currency");
   const paymentMethod = watch("payment_method");
   const projectId = watch("project_id");
+  const accountId = watch("account_id");
   const isTaxDeductible = watch("is_tax_deductible");
 
   async function onSubmit(data: ExpenseFormData) {
@@ -102,6 +118,7 @@ export function ExpenseForm({ userId, categories, projects, variant = "page", on
     const { error } = await supabase.from("expenses").insert({
       user_id: userId,
       amount: data.amount,
+      currency: data.currency,
       date: data.date,
       category: data.category,
       vendor: data.vendor || null,
@@ -110,11 +127,28 @@ export function ExpenseForm({ userId, categories, projects, variant = "page", on
       receipt_url: receiptUrl,
       is_tax_deductible: data.is_tax_deductible,
       project_id: data.project_id || null,
+      account_id: data.account_id || null,
     });
 
     if (error) {
       toast.error("Failed to create expense: " + error.message);
       return;
+    }
+
+    // Update linked account balance
+    if (data.account_id) {
+      const acct = accounts.find((a) => a.id === data.account_id);
+      if (acct) {
+        await updateAccountBalance(
+          supabase,
+          acct.id,
+          userId,
+          data.amount,
+          acct.account_type,
+          "add",
+          `Expense: ${data.category}${data.vendor ? ` – ${data.vendor}` : ""}`
+        );
+      }
     }
 
     toast.success("Expense logged");
@@ -128,7 +162,7 @@ export function ExpenseForm({ userId, categories, projects, variant = "page", on
 
   const formContent = (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-3">
         <div className="space-y-2">
           <Label htmlFor="amount">
             Amount <span className="text-destructive">*</span>
@@ -145,6 +179,31 @@ export function ExpenseForm({ userId, categories, projects, variant = "page", on
               {errors.amount.message}
             </p>
           )}
+        </div>
+        <div className="space-y-2">
+          <Label>Currency</Label>
+          <Select
+            value={currency}
+            onValueChange={(val) => {
+              setValue("currency", val);
+              // Clear account if it doesn't match the new currency
+              const currentAcct = accounts.find((a) => a.id === accountId);
+              if (currentAcct && currentAcct.currency !== val) {
+                setValue("account_id", "");
+              }
+            }}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {CURRENCIES.map((c) => (
+                <SelectItem key={c.value} value={c.value}>
+                  {c.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <div className="space-y-2">
           <Label htmlFor="date">Date</Label>
@@ -215,6 +274,39 @@ export function ExpenseForm({ userId, categories, projects, variant = "page", on
             </SelectContent>
           </Select>
         </div>
+        <div className="space-y-2">
+          <Label>Paid From (optional)</Label>
+          <Select
+            value={accountId || "none"}
+            onValueChange={(val) =>
+              setValue("account_id", val === "none" ? "" : val)
+            }
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="No account" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">No account</SelectItem>
+              {accounts
+                .filter((a) => a.currency === currency)
+                .map((a) => (
+                <SelectItem key={a.id} value={a.id}>
+                  <span className="flex items-center gap-2">
+                    {a.account_type === "credit_card" ? (
+                      <CreditCard className="h-3.5 w-3.5" />
+                    ) : (
+                      <Landmark className="h-3.5 w-3.5" />
+                    )}
+                    {a.account_name}
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2">
           <Label>Project (optional)</Label>
           <Select

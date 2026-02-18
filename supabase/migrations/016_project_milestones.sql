@@ -25,27 +25,16 @@ create trigger project_milestones_updated_at
 alter table invoices add column if not exists milestone_id uuid
   references project_milestones(id) on delete set null;
 
--- Enable RLS
-alter table project_milestones enable row level security;
+-- Disable RLS to match all other tables (app uses NextAuth, not Supabase Auth)
+alter table project_milestones disable row level security;
 
--- Drop policies first to avoid duplicates, then create
+-- Drop any existing RLS policies (cleanup)
 drop policy if exists "Users can view own milestones" on project_milestones;
-create policy "Users can view own milestones"
-  on project_milestones for select using (user_id = auth.uid());
-
 drop policy if exists "Users can insert own milestones" on project_milestones;
-create policy "Users can insert own milestones"
-  on project_milestones for insert with check (user_id = auth.uid());
-
 drop policy if exists "Users can update own milestones" on project_milestones;
-create policy "Users can update own milestones"
-  on project_milestones for update using (user_id = auth.uid());
-
 drop policy if exists "Users can delete own milestones" on project_milestones;
-create policy "Users can delete own milestones"
-  on project_milestones for delete using (user_id = auth.uid());
 
--- Enable realtime (ignore error if already added)
+-- Enable realtime
 do $$
 begin
   alter publication supabase_realtime add table project_milestones;

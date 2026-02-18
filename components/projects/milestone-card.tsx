@@ -29,6 +29,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Loader2,
+  CheckCircle2,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
@@ -73,6 +74,7 @@ export function MilestoneCard({
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [invoiceModal, setInvoiceModal] = useState<InvoiceModalData | null>(null);
   const [loadingInvoice, setLoadingInvoice] = useState(false);
+  const [markingPaidId, setMarkingPaidId] = useState<string | null>(null);
 
   // Realtime subscription
   useRealtime<ProjectMilestone>({
@@ -182,6 +184,46 @@ export function MilestoneCard({
       clientId: projectRes.data?.client_id ?? null,
     });
     setLoadingInvoice(false);
+  }
+
+  async function handleMarkPaid(milestone: ProjectMilestone) {
+    setMarkingPaidId(milestone.id);
+    const supabase = createClient();
+
+    // Update milestone to paid
+    const { error } = await supabase
+      .from("project_milestones")
+      .update({ status: "paid" })
+      .eq("id", milestone.id);
+
+    if (error) {
+      toast.error("Failed to mark as paid: " + error.message);
+      setMarkingPaidId(null);
+      return;
+    }
+
+    // Also update linked invoice to paid
+    const { data: linkedInvoice } = await supabase
+      .from("invoices")
+      .select("id")
+      .eq("milestone_id", milestone.id)
+      .single();
+
+    if (linkedInvoice) {
+      await supabase
+        .from("invoices")
+        .update({ status: "paid" })
+        .eq("id", linkedInvoice.id);
+    }
+
+    setMilestones((prev) =>
+      prev.map((m) =>
+        m.id === milestone.id ? { ...m, status: "paid" } : m
+      )
+    );
+    toast.success("Milestone marked as paid");
+    setMarkingPaidId(null);
+    router.refresh();
   }
 
   return (
@@ -309,6 +351,22 @@ export function MilestoneCard({
                                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
                                 ) : (
                                   <FileText className="h-3.5 w-3.5" />
+                                )}
+                              </Button>
+                            )}
+                            {milestone.status === "invoiced" && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-emerald-600"
+                                title="Mark as Paid"
+                                disabled={markingPaidId === milestone.id}
+                                onClick={() => handleMarkPaid(milestone)}
+                              >
+                                {markingPaidId === milestone.id ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <CheckCircle2 className="h-3.5 w-3.5" />
                                 )}
                               </Button>
                             )}

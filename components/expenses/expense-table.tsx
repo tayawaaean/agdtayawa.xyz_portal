@@ -30,20 +30,32 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Search, FileImage, Check, X, ChevronLeft, ChevronRight, Trash2, Pencil, Loader2, Wallet, TrendingUp, CalendarDays } from "lucide-react";
+import { Search, FileImage, Check, X, ChevronLeft, ChevronRight, Trash2, Pencil, Loader2, Wallet, TrendingUp, CalendarDays, Landmark, CreditCard } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { formatCurrency, formatDate } from "@/lib/utils";
-import type { Expense } from "@/lib/types";
+import { convertAmount } from "@/lib/currency";
+import { CURRENCIES } from "@/lib/constants";
+import { updateAccountBalance } from "@/lib/account-balance";
+import type { Expense, AccountType } from "@/lib/types";
 
 const PAGE_SIZE = 10;
+
+interface AccountOption {
+  id: string;
+  account_name: string;
+  account_type: AccountType;
+  currency: string;
+}
 
 interface ExpenseTableProps {
   expenses: Expense[];
   categories: string[];
+  exchangeRates: Record<string, number>;
+  accounts?: AccountOption[];
 }
 
-export function ExpenseTable({ expenses: initialExpenses, categories }: ExpenseTableProps) {
+export function ExpenseTable({ expenses: initialExpenses, categories, exchangeRates, accounts = [] }: ExpenseTableProps) {
   const [expenses, setExpenses] = useState(initialExpenses);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
@@ -56,6 +68,7 @@ export function ExpenseTable({ expenses: initialExpenses, categories }: ExpenseT
   const [editCategory, setEditCategory] = useState("");
   const [editVendor, setEditVendor] = useState("");
   const [editDescription, setEditDescription] = useState("");
+  const [editCurrency, setEditCurrency] = useState("PHP");
   const [editDeductible, setEditDeductible] = useState(false);
   const [saving, setSaving] = useState(false);
   const [page, setPage] = useState(0);
@@ -84,6 +97,10 @@ export function ExpenseTable({ expenses: initialExpenses, categories }: ExpenseT
   async function handleDelete() {
     if (!deleteId) return;
     const supabase = createClient();
+
+    // Find the expense to check for linked account before deleting
+    const expToDelete = expenses.find((e) => e.id === deleteId);
+
     const { error } = await supabase
       .from("expenses")
       .delete()
@@ -92,6 +109,21 @@ export function ExpenseTable({ expenses: initialExpenses, categories }: ExpenseT
     if (error) {
       toast.error("Failed to delete expense: " + error.message);
     } else {
+      // Revert account balance if linked
+      if (expToDelete?.account_id) {
+        const acct = accounts.find((a) => a.id === expToDelete.account_id);
+        if (acct) {
+          await updateAccountBalance(
+            supabase,
+            acct.id,
+            expToDelete.user_id,
+            expToDelete.amount,
+            acct.account_type,
+            "remove",
+            `Expense deleted: ${expToDelete.category}`
+          );
+        }
+      }
       setExpenses((prev) => prev.filter((e) => e.id !== deleteId));
       toast.success("Expense deleted");
     }
@@ -101,6 +133,7 @@ export function ExpenseTable({ expenses: initialExpenses, categories }: ExpenseT
   function openEdit(exp: Expense) {
     setEditExpense(exp);
     setEditAmount(exp.amount.toString());
+    setEditCurrency(exp.currency || "PHP");
     setEditDate(exp.date);
     setEditCategory(exp.category);
     setEditVendor(exp.vendor || "");
@@ -121,6 +154,7 @@ export function ExpenseTable({ expenses: initialExpenses, categories }: ExpenseT
       .from("expenses")
       .update({
         amount: Math.round(amount * 100) / 100,
+        currency: editCurrency,
         date: editDate,
         category: editCategory,
         vendor: editVendor || null,
@@ -132,12 +166,29 @@ export function ExpenseTable({ expenses: initialExpenses, categories }: ExpenseT
     if (error) {
       toast.error("Failed to update: " + error.message);
     } else {
+      // If linked to an account and amount changed, apply the delta
+      const delta = Math.round((amount - editExpense.amount) * 100) / 100;
+      if (editExpense.account_id && delta !== 0) {
+        const acct = accounts.find((a) => a.id === editExpense.account_id);
+        if (acct) {
+          await updateAccountBalance(
+            supabase,
+            acct.id,
+            editExpense.user_id,
+            Math.abs(delta),
+            acct.account_type,
+            delta > 0 ? "add" : "remove",
+            `Expense edited: ${editCategory}`
+          );
+        }
+      }
       setExpenses((prev) =>
         prev.map((e) =>
           e.id === editExpense.id
             ? {
                 ...e,
                 amount,
+                currency: editCurrency,
                 date: editDate,
                 category: editCategory,
                 vendor: editVendor || null,
@@ -193,12 +244,14 @@ export function ExpenseTable({ expenses: initialExpenses, categories }: ExpenseT
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const paginatedExpenses = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
-  const monthTotal = filtered.reduce((sum, exp) => sum + exp.amount, 0);
+  const monthTotal = filtered.reduce(
+    (sum, exp) => sum + convertAmount(exp.amount, exp.currency || "PHP", exchangeRates), 0
+  );
 
-  // Group totals and counts by category
+  // Group totals and counts by category (converted to base currency)
   const categoryData = filtered.reduce<Record<string, { total: number; count: number }>>((acc, exp) => {
     if (!acc[exp.category]) acc[exp.category] = { total: 0, count: 0 };
-    acc[exp.category].total += exp.amount;
+    acc[exp.category].total += convertAmount(exp.amount, exp.currency || "PHP", exchangeRates);
     acc[exp.category].count += 1;
     return acc;
   }, {});
@@ -319,6 +372,9 @@ export function ExpenseTable({ expenses: initialExpenses, categories }: ExpenseT
                 <TableHead className="w-[80px] hidden sm:table-cell text-center">
                   Deductible
                 </TableHead>
+                <TableHead className="w-[40px] hidden md:table-cell text-center">
+                  Account
+                </TableHead>
                 <TableHead className="w-[80px]"></TableHead>
               </TableRow>
             </TableHeader>
@@ -336,7 +392,7 @@ export function ExpenseTable({ expenses: initialExpenses, categories }: ExpenseT
                     {exp.vendor || "-"}
                   </TableCell>
                   <TableCell className="text-right font-medium">
-                    {formatCurrency(exp.amount)}
+                    {formatCurrency(exp.amount, exp.currency || "PHP")}
                   </TableCell>
                   <TableCell className="text-center">
                     {exp.receipt_url && (
@@ -354,6 +410,21 @@ export function ExpenseTable({ expenses: initialExpenses, categories }: ExpenseT
                     ) : (
                       <X className="h-4 w-4 text-muted-foreground inline-block" />
                     )}
+                  </TableCell>
+                  <TableCell className="hidden md:table-cell text-center">
+                    {exp.account_id && (() => {
+                      const acct = accounts.find((a) => a.id === exp.account_id);
+                      if (!acct) return null;
+                      return (
+                        <span title={acct.account_name}>
+                          {acct.account_type === "credit_card" ? (
+                            <CreditCard className="h-4 w-4 text-muted-foreground inline-block" />
+                          ) : (
+                            <Landmark className="h-4 w-4 text-muted-foreground inline-block" />
+                          )}
+                        </span>
+                      );
+                    })()}
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1">
@@ -431,10 +502,23 @@ export function ExpenseTable({ expenses: initialExpenses, categories }: ExpenseT
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
               <div className="space-y-2">
                 <Label>Amount</Label>
                 <Input type="number" step="0.01" min="0.01" value={editAmount} onChange={(e) => setEditAmount(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Currency</Label>
+                <Select value={editCurrency} onValueChange={setEditCurrency}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CURRENCIES.map((c) => (
+                      <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label>Date</Label>

@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { Header } from "@/components/layout/header";
 import { TaxPage as TaxPageClient } from "@/components/tax/tax-page";
+import { getExchangeRates, convertAmount, sumConverted } from "@/lib/currency";
 
 export default async function TaxPage() {
   const session = await auth();
@@ -20,7 +21,7 @@ export default async function TaxPage() {
   // Fetch paid invoices for revenue
   const { data: paidInvoices } = await supabase
     .from("invoices")
-    .select("total, issue_date")
+    .select("total, currency, issue_date")
     .eq("status", "paid")
     .gte("issue_date", startOfYear)
     .lte("issue_date", endOfYear);
@@ -28,7 +29,7 @@ export default async function TaxPage() {
   // Fetch deductible expenses
   const { data: expenses } = await supabase
     .from("expenses")
-    .select("amount, date, is_tax_deductible")
+    .select("amount, currency, date, is_tax_deductible")
     .gte("date", startOfYear)
     .lte("date", endOfYear);
 
@@ -39,12 +40,19 @@ export default async function TaxPage() {
     .eq("year", year)
     .order("quarter");
 
-  const grossRevenue =
-    paidInvoices?.reduce((sum, inv) => sum + (inv.total || 0), 0) ?? 0;
-  const totalExpenses =
-    expenses
-      ?.filter((e) => e.is_tax_deductible)
-      .reduce((sum, exp) => sum + (exp.amount || 0), 0) ?? 0;
+  // Fetch exchange rates for currency conversion (base = PHP for tax purposes)
+  const rates = await getExchangeRates("PHP");
+
+  const grossRevenue = sumConverted(
+    (paidInvoices ?? []).map((inv) => ({ amount: inv.total || 0, currency: inv.currency || "PHP" })),
+    rates
+  );
+  const totalExpenses = sumConverted(
+    (expenses ?? [])
+      .filter((e) => e.is_tax_deductible)
+      .map((exp) => ({ amount: exp.amount || 0, currency: exp.currency || "PHP" })),
+    rates
+  );
 
   // Group revenue by quarter
   const quarterlyRevenue = [0, 0, 0, 0];
@@ -53,14 +61,14 @@ export default async function TaxPage() {
   paidInvoices?.forEach((inv) => {
     const month = new Date(inv.issue_date).getMonth();
     const q = Math.floor(month / 3);
-    quarterlyRevenue[q] += inv.total || 0;
+    quarterlyRevenue[q] += convertAmount(inv.total || 0, inv.currency || "PHP", rates);
   });
 
   expenses?.forEach((exp) => {
     if (exp.is_tax_deductible) {
       const month = new Date(exp.date).getMonth();
       const q = Math.floor(month / 3);
-      quarterlyExpenses[q] += exp.amount || 0;
+      quarterlyExpenses[q] += convertAmount(exp.amount || 0, exp.currency || "PHP", rates);
     }
   });
 

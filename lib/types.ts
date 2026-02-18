@@ -99,12 +99,37 @@ export interface ProjectMilestone {
   updated_at: string;
 }
 
+export type ContractType = "hourly" | "fixed";
+export type ContractStatus = "active" | "paused" | "ended";
+export type BillingCycle = "weekly" | "biweekly" | "monthly";
+
+export interface Contract {
+  id: string;
+  user_id: string;
+  client_id: string;
+  name: string;
+  description: string | null;
+  type: ContractType;
+  billing_cycle: BillingCycle;
+  rate: number | null;
+  fixed_amount: number | null;
+  currency: string;
+  status: ContractStatus;
+  start_date: string | null;
+  end_date: string | null;
+  created_at: string;
+  updated_at: string;
+  // Joined fields
+  client?: Client;
+}
+
 export interface Invoice {
   id: string;
   user_id: string;
   client_id: string | null;
   project_id: string | null;
   milestone_id: string | null;
+  contract_id: string | null;
   invoice_number: string;
   status: InvoiceStatus;
   issue_date: string;
@@ -175,6 +200,7 @@ export interface Expense {
   id: string;
   user_id: string;
   amount: number;
+  currency: string;
   date: string;
   category: string;
   vendor: string | null;
@@ -183,10 +209,12 @@ export interface Expense {
   receipt_url: string | null;
   is_tax_deductible: boolean;
   project_id: string | null;
+  account_id: string | null;
   created_at: string;
   updated_at: string;
   // Joined fields
   project?: Project;
+  account?: Account;
 }
 
 export interface ExpenseCategory {
@@ -247,4 +275,47 @@ export interface VatThresholdStatus {
   threshold: number;
   percentage: number;
   level: "safe" | "warning" | "danger";
+}
+
+// Accounts
+export type AccountType = "bank_account" | "credit_card";
+export type AccountStatus = "active" | "closed";
+
+export interface Account {
+  id: string;
+  user_id: string;
+  account_name: string;
+  account_type: AccountType;
+  institution_name: string | null;
+  account_number: string | null;
+  currency: string;
+  current_balance: number;
+  credit_limit: number | null;
+  status: AccountStatus;
+  opened_date: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BalanceEntry {
+  id: string;
+  account_id: string;
+  user_id: string;
+  balance_date: string;
+  balance: number;
+  note: string | null;
+  created_at: string;
+}
+
+export interface AccountTransfer {
+  id: string;
+  user_id: string;
+  from_account_id: string | null;
+  to_account_id: string | null;
+  amount: number;
+  currency: string;
+  note: string | null;
+  transfer_date: string;
+  created_at: string;
 }

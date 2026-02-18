@@ -184,9 +184,11 @@ export function ProjectForm({
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className={`grid gap-4 ${projectType === "fixed" ? "sm:grid-cols-2" : "sm:grid-cols-3"}`}>
         <div className="space-y-2">
-          <Label htmlFor="rate">Rate</Label>
+          <Label htmlFor="rate">
+            {projectType === "fixed" ? "Fixed Price" : projectType === "retainer" ? "Retainer Fee" : "Hourly Rate"}
+          </Label>
           <Input
             id="rate"
             type="number"
@@ -213,16 +215,18 @@ export function ProjectForm({
             </SelectContent>
           </Select>
         </div>
-        <div className="space-y-2">
-          <Label htmlFor="estimated_hours">Estimated Hours</Label>
-          <Input
-            id="estimated_hours"
-            type="number"
-            step="0.5"
-            min="0"
-            {...register("estimated_hours")}
-          />
-        </div>
+        {projectType !== "fixed" && (
+          <div className="space-y-2">
+            <Label htmlFor="estimated_hours">Estimated Hours</Label>
+            <Input
+              id="estimated_hours"
+              type="number"
+              step="0.5"
+              min="0"
+              {...register("estimated_hours")}
+            />
+          </div>
+        )}
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">

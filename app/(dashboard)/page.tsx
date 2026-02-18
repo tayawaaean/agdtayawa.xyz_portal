@@ -18,9 +18,14 @@ import {
   TrendingDown,
   FolderKanban,
   Inbox,
+  Landmark,
+  CreditCard,
+  ArrowRightLeft,
+  Wallet,
 } from "lucide-react";
 import Link from "next/link";
 import { formatCurrency } from "@/lib/utils";
+import { getExchangeRates, sumConverted, convertAmount } from "@/lib/currency";
 import { RevenueChart } from "@/components/dashboard/revenue-chart";
 import { QuickActions } from "@/components/dashboard/quick-actions";
 
@@ -95,35 +100,38 @@ export default async function DashboardPage() {
     { data: activeProjects },
     { data: chartRevenue },
     { data: chartExpenses },
+    { data: activeAccountsData },
+    { data: allActiveAccounts },
+    { data: recentTransfers },
   ] = await Promise.all([
     supabase
       .from("invoices")
-      .select("total")
+      .select("total, currency")
       .eq("status", "paid")
       .gte("issue_date", startOfMonth),
     supabase
       .from("invoices")
-      .select("total")
+      .select("total, currency")
       .eq("status", "paid")
       .gte("issue_date", startOfYear),
     supabase
       .from("invoices")
-      .select("total")
+      .select("total, currency")
       .eq("status", "paid")
       .gte("issue_date", startOfPrevMonth)
       .lte("issue_date", endOfPrevMonth),
     supabase
       .from("invoices")
       .select(
-        "id, invoice_number, total, due_date, status, client:clients(company_name)"
+        "id, invoice_number, total, currency, due_date, status, client:clients(company_name)"
       )
       .in("status", ["sent", "viewed", "overdue"])
       .order("due_date", { ascending: true })
       .limit(5),
-    supabase.from("expenses").select("amount").gte("date", startOfMonth),
+    supabase.from("expenses").select("amount, currency").gte("date", startOfMonth),
     supabase
       .from("expenses")
-      .select("amount")
+      .select("amount, currency")
       .gte("date", startOfPrevMonth)
       .lte("date", endOfPrevMonth),
     supabase
@@ -135,28 +143,61 @@ export default async function DashboardPage() {
     // Chart data: revenue per month (last 6 months)
     supabase
       .from("invoices")
-      .select("total, issue_date")
+      .select("total, currency, issue_date")
       .eq("status", "paid")
       .gte("issue_date", monthRanges[0].start),
     // Chart data: expenses per month (last 6 months)
     supabase
       .from("expenses")
-      .select("amount, date")
+      .select("amount, currency, date")
       .gte("date", monthRanges[0].start),
+    // Active accounts for dashboard widget
+    supabase
+      .from("accounts")
+      .select("id, account_name, account_type, current_balance, currency")
+      .eq("status", "active")
+      .order("current_balance", { ascending: false })
+      .limit(5),
+    // All active accounts for net worth calculation + name lookup
+    supabase
+      .from("accounts")
+      .select("id, account_name, account_type, current_balance, currency")
+      .eq("status", "active"),
+    // Recent transfers
+    supabase
+      .from("account_transfers")
+      .select("id, amount, currency, note, transfer_date, from_account_id, to_account_id")
+      .order("transfer_date", { ascending: false })
+      .limit(5),
   ]);
 
-  const revenueMonth =
-    paidInvoicesMonth?.reduce((sum, inv) => sum + (inv.total || 0), 0) ?? 0;
-  const revenueYear =
-    paidInvoicesYear?.reduce((sum, inv) => sum + (inv.total || 0), 0) ?? 0;
-  const revenuePrevMonth =
-    paidInvoicesPrevMonth?.reduce((sum, inv) => sum + (inv.total || 0), 0) ?? 0;
-  const outstandingTotal =
-    outstandingInvoices?.reduce((sum, inv) => sum + (inv.total || 0), 0) ?? 0;
-  const expensesTotal =
-    expensesMonth?.reduce((sum, exp) => sum + (exp.amount || 0), 0) ?? 0;
-  const expensesPrevTotal =
-    expensesPrevMonth?.reduce((sum, exp) => sum + (exp.amount || 0), 0) ?? 0;
+  // Fetch exchange rates (base = PHP) for currency conversion
+  const rates = await getExchangeRates("PHP");
+
+  const revenueMonth = sumConverted(
+    (paidInvoicesMonth ?? []).map((inv) => ({ amount: inv.total || 0, currency: inv.currency || "PHP" })),
+    rates
+  );
+  const revenueYear = sumConverted(
+    (paidInvoicesYear ?? []).map((inv) => ({ amount: inv.total || 0, currency: inv.currency || "PHP" })),
+    rates
+  );
+  const revenuePrevMonth = sumConverted(
+    (paidInvoicesPrevMonth ?? []).map((inv) => ({ amount: inv.total || 0, currency: inv.currency || "PHP" })),
+    rates
+  );
+  const outstandingTotal = sumConverted(
+    (outstandingInvoices ?? []).map((inv) => ({ amount: inv.total || 0, currency: inv.currency || "PHP" })),
+    rates
+  );
+  const expensesTotal = sumConverted(
+    (expensesMonth ?? []).map((exp) => ({ amount: exp.amount || 0, currency: exp.currency || "PHP" })),
+    rates
+  );
+  const expensesPrevTotal = sumConverted(
+    (expensesPrevMonth ?? []).map((exp) => ({ amount: exp.amount || 0, currency: exp.currency || "PHP" })),
+    rates
+  );
 
   // Calculate trend percentages
   const revenueTrend =
@@ -172,18 +213,40 @@ export default async function DashboardPage() {
         ? 100
         : 0;
 
-  // Build chart data
+  // Build chart data (with currency conversion)
   const chartData = monthRanges.map(({ start, end, label }) => {
-    const revenue =
-      chartRevenue
-        ?.filter((inv) => inv.issue_date >= start && inv.issue_date <= end)
-        .reduce((sum, inv) => sum + (inv.total || 0), 0) ?? 0;
-    const expenses =
-      chartExpenses
-        ?.filter((exp) => exp.date >= start && exp.date <= end)
-        .reduce((sum, exp) => sum + (exp.amount || 0), 0) ?? 0;
+    const monthInvoices = chartRevenue?.filter((inv) => inv.issue_date >= start && inv.issue_date <= end) ?? [];
+    const revenue = sumConverted(
+      monthInvoices.map((inv) => ({ amount: inv.total || 0, currency: inv.currency || "PHP" })),
+      rates
+    );
+    const monthExpenses = chartExpenses?.filter((exp) => exp.date >= start && exp.date <= end) ?? [];
+    const expenses = sumConverted(
+      monthExpenses.map((exp) => ({ amount: exp.amount || 0, currency: exp.currency || "PHP" })),
+      rates
+    );
     return { month: label, revenue, expenses };
   });
+
+  // Net worth calculation (bank balances - credit card balances)
+  const totalBankBalance = sumConverted(
+    (allActiveAccounts ?? [])
+      .filter((a) => a.account_type === "bank_account")
+      .map((a) => ({ amount: a.current_balance || 0, currency: a.currency || "PHP" })),
+    rates
+  );
+  const totalCreditOwed = sumConverted(
+    (allActiveAccounts ?? [])
+      .filter((a) => a.account_type === "credit_card")
+      .map((a) => ({ amount: a.current_balance || 0, currency: a.currency || "PHP" })),
+    rates
+  );
+  const netWorth = totalBankBalance - totalCreditOwed;
+
+  // Build a map of account id -> name for transfer display
+  const accountMap = new Map(
+    (allActiveAccounts ?? []).map((a) => [a.id, a.account_name])
+  );
 
   // Revenue vs expenses bar
   const netTotal = revenueMonth + expensesTotal;
@@ -206,7 +269,7 @@ export default async function DashboardPage() {
       />
       <div className="p-4 md:p-6 space-y-6">
         {/* Stat Cards */}
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
           {/* Revenue */}
           <Card className="gap-2 border-l-4 border-l-emerald-500">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -306,6 +369,24 @@ export default async function DashboardPage() {
                 {activeProjects?.length ?? 0}
               </div>
               <p className="text-xs text-muted-foreground mt-1">In progress</p>
+            </CardContent>
+          </Card>
+
+          {/* Net Worth */}
+          <Card className="gap-2 border-l-4 border-l-violet-500">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium">Net Worth</CardTitle>
+              <div className="rounded-full bg-violet-100 p-2 dark:bg-violet-950">
+                <Wallet className="h-4 w-4 text-violet-600 dark:text-violet-400" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className={`text-3xl font-bold ${netWorth >= 0 ? "" : "text-red-500"}`}>
+                {formatCurrency(netWorth)}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Bank: {formatCurrency(totalBankBalance)} · CC: {formatCurrency(totalCreditOwed)}
+              </p>
             </CardContent>
           </Card>
         </div>
@@ -467,7 +548,7 @@ export default async function DashboardPage() {
                         </p>
                       </div>
                       <p className="text-sm font-medium">
-                        {formatCurrency(inv.total)}
+                        {formatCurrency(inv.total, inv.currency || "PHP")}
                       </p>
                     </Link>
                   ))}
@@ -480,6 +561,110 @@ export default async function DashboardPage() {
                   <p className="text-sm font-medium">All caught up!</p>
                   <p className="text-xs text-muted-foreground mt-1">
                     No outstanding invoices at the moment
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Account Balances */}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle className="text-base">Account Balances</CardTitle>
+              <Link href="/accounts">
+                <Button variant="ghost" size="sm">
+                  View all
+                </Button>
+              </Link>
+            </CardHeader>
+            <CardContent>
+              {activeAccountsData && activeAccountsData.length > 0 ? (
+                <div className="space-y-3">
+                  {activeAccountsData.map((acc) => (
+                    <Link
+                      key={acc.id}
+                      href={`/accounts/${acc.id}`}
+                      className="flex items-center justify-between rounded-md p-2 hover:bg-muted transition-colors"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="rounded-full bg-muted p-2">
+                          {acc.account_type === "credit_card" ? (
+                            <CreditCard className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                          ) : (
+                            <Landmark className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                          )}
+                        </div>
+                        <p className="text-sm font-medium">
+                          {acc.account_name}
+                        </p>
+                      </div>
+                      <p className="text-sm font-medium">
+                        {formatCurrency(acc.current_balance, acc.currency || "PHP")}
+                      </p>
+                    </Link>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-8 text-center">
+                  <div className="rounded-full bg-muted p-3 mb-3">
+                    <Landmark className="h-6 w-6 text-muted-foreground" />
+                  </div>
+                  <p className="text-sm font-medium">No accounts</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Add a bank account or credit card to track balances
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Recent Transfers */}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle className="text-base">Recent Transfers</CardTitle>
+              <Link href="/accounts">
+                <Button variant="ghost" size="sm">
+                  View all
+                </Button>
+              </Link>
+            </CardHeader>
+            <CardContent>
+              {recentTransfers && recentTransfers.length > 0 ? (
+                <div className="space-y-3">
+                  {recentTransfers.map((t) => (
+                    <div
+                      key={t.id}
+                      className="flex items-center justify-between rounded-md p-2"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="rounded-full bg-violet-100 p-2 dark:bg-violet-950">
+                          <ArrowRightLeft className="h-4 w-4 text-violet-600 dark:text-violet-400" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium">
+                            {accountMap.get(t.from_account_id) ?? "Deleted Account"}{" "}
+                            <span className="text-muted-foreground">&rarr;</span>{" "}
+                            {accountMap.get(t.to_account_id) ?? "Deleted Account"}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {t.note || t.transfer_date}
+                          </p>
+                        </div>
+                      </div>
+                      <p className="text-sm font-medium">
+                        {formatCurrency(t.amount, t.currency || "PHP")}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-8 text-center">
+                  <div className="rounded-full bg-muted p-3 mb-3">
+                    <ArrowRightLeft className="h-6 w-6 text-muted-foreground" />
+                  </div>
+                  <p className="text-sm font-medium">No transfers yet</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Transfer funds between accounts to see history here
                   </p>
                 </div>
               )}

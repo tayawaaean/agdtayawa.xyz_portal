@@ -5,6 +5,7 @@ import { ExpenseTable } from "@/components/expenses/expense-table";
 import { NewExpenseDialog } from "@/components/expenses/new-expense-dialog";
 import { ImportDialog } from "@/components/import/import-dialog";
 import { expenseImportConfig } from "@/lib/import/configs/expenses";
+import { getExchangeRates } from "@/lib/currency";
 
 export default async function ExpensesPage() {
   const session = await auth();
@@ -31,6 +32,15 @@ export default async function ExpensesPage() {
     .select("id, name")
     .in("status", ["not_started", "in_progress"])
     .order("name");
+
+  const { data: accounts } = await supabase
+    .from("accounts")
+    .select("id, account_name, account_type, currency")
+    .eq("user_id", session!.user.id)
+    .eq("status", "active")
+    .order("account_name");
+
+  const exchangeRates = await getExchangeRates("PHP");
 
   return (
     <>
@@ -61,6 +71,8 @@ export default async function ExpensesPage() {
         <ExpenseTable
           expenses={expenses ?? []}
           categories={categories?.map((c) => c.name) ?? []}
+          exchangeRates={exchangeRates}
+          accounts={accounts ?? []}
         />
       </div>
     </>

@@ -5,6 +5,11 @@ import type {
   InvoiceStatus,
   PaymentMethod,
   MilestoneStatus,
+  ContractType,
+  ContractStatus,
+  BillingCycle,
+  AccountType,
+  AccountStatus,
 } from "./types";
 
 // Client statuses
@@ -48,6 +53,26 @@ export const MILESTONE_STATUSES: { value: MilestoneStatus; label: string }[] = [
   { value: "completed", label: "Completed" },
   { value: "invoiced", label: "Invoiced" },
   { value: "paid", label: "Paid" },
+];
+
+// Contract types
+export const CONTRACT_TYPES: { value: ContractType; label: string }[] = [
+  { value: "hourly", label: "Hourly" },
+  { value: "fixed", label: "Fixed" },
+];
+
+// Contract statuses
+export const CONTRACT_STATUSES: { value: ContractStatus; label: string }[] = [
+  { value: "active", label: "Active" },
+  { value: "paused", label: "Paused" },
+  { value: "ended", label: "Ended" },
+];
+
+// Billing cycles
+export const BILLING_CYCLES: { value: BillingCycle; label: string }[] = [
+  { value: "weekly", label: "Weekly" },
+  { value: "biweekly", label: "Biweekly" },
+  { value: "monthly", label: "Monthly" },
 ];
 
 // Payment methods
@@ -104,6 +129,19 @@ export const FILING_DEADLINES = [
 export const CURRENCIES = [
   { value: "PHP", label: "PHP (₱)", symbol: "₱" },
   { value: "USD", label: "USD ($)", symbol: "$" },
+  { value: "CAD", label: "CAD (C$)", symbol: "C$" },
+];
+
+// Account types
+export const ACCOUNT_TYPES: { value: AccountType; label: string }[] = [
+  { value: "bank_account", label: "Bank Account" },
+  { value: "credit_card", label: "Credit Card" },
+];
+
+// Account statuses
+export const ACCOUNT_STATUSES: { value: AccountStatus; label: string }[] = [
+  { value: "active", label: "Active" },
+  { value: "closed", label: "Closed" },
 ];
 
 // Status badge color mappings
@@ -120,6 +158,11 @@ export const STATUS_COLORS: Record<string, string> = {
   // Milestone statuses
   pending: "bg-yellow-100 text-yellow-800",
   invoiced: "bg-indigo-100 text-indigo-800",
+  // Contract statuses
+  paused: "bg-orange-100 text-orange-800",
+  ended: "bg-gray-100 text-gray-800",
+  // Account statuses
+  closed: "bg-gray-100 text-gray-800",
   // Invoice statuses
   draft: "bg-gray-100 text-gray-800",
   sent: "bg-blue-100 text-blue-800",

@@ -32,7 +32,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ChevronLeft, ChevronRight, Pencil, Trash2, Loader2, FileText, FilePen, Send, CircleCheck, AlertTriangle, CalendarDays, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Pencil, Trash2, Loader2, FileText, FilePen, Send, CircleCheck, AlertTriangle, CalendarDays, X, CheckCircle2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { formatCurrency, formatDate } from "@/lib/utils";
@@ -44,11 +44,17 @@ const PAGE_SIZE = 10;
 interface InvoiceTableProps {
   invoices: (Invoice & {
     client?: { company_name: string } | null;
+    project?: { name: string } | null;
+    milestone?: { name: string } | null;
+    contract?: { name: string } | null;
   })[];
 }
 
-type InvoiceWithClient = Invoice & {
+type InvoiceWithJoins = Invoice & {
   client?: { company_name: string } | null;
+  project?: { name: string } | null;
+  milestone?: { name: string } | null;
+  contract?: { name: string } | null;
 };
 
 export function InvoiceTable({ invoices: initialInvoices }: InvoiceTableProps) {
@@ -58,7 +64,7 @@ export function InvoiceTable({ invoices: initialInvoices }: InvoiceTableProps) {
   const [dateRange, setDateRange] = useState("all");
   const [page, setPage] = useState(0);
   const [deleteId, setDeleteId] = useState<string | null>(null);
-  const [editInvoice, setEditInvoice] = useState<InvoiceWithClient | null>(null);
+  const [editInvoice, setEditInvoice] = useState<InvoiceWithJoins | null>(null);
   const [editStatus, setEditStatus] = useState<InvoiceStatus>("draft");
   const [editDueDate, setEditDueDate] = useState("");
   const [editNotes, setEditNotes] = useState("");
@@ -70,17 +76,17 @@ export function InvoiceTable({ invoices: initialInvoices }: InvoiceTableProps) {
     table: "invoices",
     ...(userId ? { filter: `user_id=eq.${userId}` } : {}),
     onInsert: useCallback(async (record: Invoice) => {
-      // Fetch full record with joined client data
+      // Fetch full record with joined data
       const supabase = createClient();
       const { data } = await supabase
         .from("invoices")
-        .select("*, client:clients(company_name)")
+        .select("*, client:clients(company_name), project:projects(name), milestone:project_milestones(name), contract:contracts(name)")
         .eq("id", record.id)
         .single();
       if (data) {
         setInvoices((prev) => {
           if (prev.some((i) => i.id === data.id)) return prev;
-          return [data as InvoiceWithClient, ...prev];
+          return [data as InvoiceWithJoins, ...prev];
         });
       }
     }, []),
@@ -155,7 +161,7 @@ export function InvoiceTable({ invoices: initialInvoices }: InvoiceTableProps) {
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const paginatedInvoices = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
-  function openEdit(inv: InvoiceWithClient) {
+  function openEdit(inv: InvoiceWithJoins) {
     setEditInvoice(inv);
     setEditStatus(inv.status);
     setEditDueDate(inv.due_date || "");
@@ -222,6 +228,42 @@ export function InvoiceTable({ invoices: initialInvoices }: InvoiceTableProps) {
       toast.success("Invoice deleted");
     }
     setDeleteId(null);
+  }
+
+  const [markingPaidId, setMarkingPaidId] = useState<string | null>(null);
+
+  async function handleMarkPaid(invoiceId: string) {
+    setMarkingPaidId(invoiceId);
+    const supabase = createClient();
+
+    const { error } = await supabase
+      .from("invoices")
+      .update({ status: "paid" })
+      .eq("id", invoiceId);
+
+    if (error) {
+      toast.error("Failed to mark as paid: " + error.message);
+    } else {
+      // Update linked milestone to "paid"
+      const { data: invoiceRow } = await supabase
+        .from("invoices")
+        .select("milestone_id")
+        .eq("id", invoiceId)
+        .single();
+
+      if (invoiceRow?.milestone_id) {
+        await supabase
+          .from("project_milestones")
+          .update({ status: "paid" })
+          .eq("id", invoiceRow.milestone_id);
+      }
+
+      setInvoices((prev) =>
+        prev.map((i) => (i.id === invoiceId ? { ...i, status: "paid" as InvoiceStatus } : i))
+      );
+      toast.success("Invoice marked as paid");
+    }
+    setMarkingPaidId(null);
   }
 
   function formatStatus(status: string): string {
@@ -339,6 +381,7 @@ export function InvoiceTable({ invoices: initialInvoices }: InvoiceTableProps) {
               <TableRow>
                 <TableHead>Invoice #</TableHead>
                 <TableHead className="hidden sm:table-cell">Client</TableHead>
+                <TableHead className="hidden lg:table-cell">Project / Contract</TableHead>
                 <TableHead>Date</TableHead>
                 <TableHead className="hidden md:table-cell">Due</TableHead>
                 <TableHead className="text-right">Total</TableHead>
@@ -356,8 +399,25 @@ export function InvoiceTable({ invoices: initialInvoices }: InvoiceTableProps) {
                   <TableCell className="font-medium">
                     {inv.invoice_number}
                   </TableCell>
-                  <TableCell className="hidden sm:table-cell">
+                  <TableCell className="hidden sm:table-cell max-w-[200px] truncate">
                     {inv.client?.company_name ?? "-"}
+                  </TableCell>
+                  <TableCell className="hidden lg:table-cell max-w-[200px]">
+                    {inv.project?.name || inv.contract?.name ? (
+                      <div className="min-w-0">
+                        {inv.project?.name && (
+                          <p className="text-sm truncate">{inv.project.name}</p>
+                        )}
+                        {inv.milestone?.name && (
+                          <p className="text-xs text-muted-foreground truncate">{inv.milestone.name}</p>
+                        )}
+                        {inv.contract?.name && (
+                          <p className={`text-xs truncate ${inv.project?.name ? "text-muted-foreground" : "text-sm"}`}>{inv.contract.name}</p>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground">-</span>
+                    )}
                   </TableCell>
                   <TableCell>{formatDate(inv.issue_date)}</TableCell>
                   <TableCell className="hidden md:table-cell">
@@ -378,6 +438,25 @@ export function InvoiceTable({ invoices: initialInvoices }: InvoiceTableProps) {
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1">
+                      {!["paid", "cancelled"].includes(inv.status) && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-emerald-600"
+                          title="Mark as Paid"
+                          disabled={markingPaidId === inv.id}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleMarkPaid(inv.id);
+                          }}
+                        >
+                          {markingPaidId === inv.id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                          )}
+                        </Button>
+                      )}
                       <Button
                         variant="ghost"
                         size="icon"

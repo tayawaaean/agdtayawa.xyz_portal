@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -25,7 +25,8 @@ import {
 import { toast } from "sonner";
 import { Loader2, Plus, Trash2, Clock } from "lucide-react";
 import { generateInvoiceNumber, formatCurrency } from "@/lib/utils";
-import type { Profile, TimeEntry } from "@/lib/types";
+import { CURRENCIES } from "@/lib/constants";
+import type { Profile, TimeEntry, ProjectMilestone } from "@/lib/types";
 
 interface LineItem {
   description: string;
@@ -33,11 +34,23 @@ interface LineItem {
   unit_price: number;
 }
 
+interface ContractOption {
+  id: string;
+  name: string;
+  type: "hourly" | "fixed";
+  billing_cycle: string;
+  rate: number | null;
+  fixed_amount: number | null;
+  currency: string;
+  client_id: string;
+}
+
 interface InvoiceBuilderProps {
   userId: string;
   profile: Profile | null;
   clients: { id: string; company_name: string; email: string | null; address: string | null }[];
   projects: { id: string; name: string; rate: number | null; client_id: string | null }[];
+  contracts?: ContractOption[];
   lastInvoiceNumber: string | null;
   variant?: "page" | "modal";
   onSuccess?: () => void;
@@ -45,6 +58,9 @@ interface InvoiceBuilderProps {
   milestoneData?: { name: string; description: string | null; amount: number; currency: string };
   milestoneProjectId?: string;
   milestoneProjectClientId?: string | null;
+  contractId?: string;
+  contractData?: { name: string; type: "hourly" | "fixed"; billing_cycle: string; rate: number | null; fixed_amount: number | null; currency: string };
+  contractClientId?: string;
 }
 
 export function InvoiceBuilder({
@@ -52,6 +68,7 @@ export function InvoiceBuilder({
   profile,
   clients,
   projects,
+  contracts = [],
   lastInvoiceNumber,
   variant = "page",
   onSuccess,
@@ -59,6 +76,9 @@ export function InvoiceBuilder({
   milestoneData,
   milestoneProjectId,
   milestoneProjectClientId,
+  contractId: initialContractId,
+  contractData,
+  contractClientId,
 }: InvoiceBuilderProps) {
   const router = useRouter();
   const today = new Date().toISOString().split("T")[0];
@@ -67,8 +87,9 @@ export function InvoiceBuilder({
     profile?.invoice_prefix ?? "INV"
   );
 
-  const [clientId, setClientId] = useState(milestoneProjectClientId ?? "");
+  const [clientId, setClientId] = useState(contractClientId ?? milestoneProjectClientId ?? "");
   const [projectId, setProjectId] = useState(milestoneProjectId ?? "");
+  const [selectedContractId, setSelectedContractId] = useState(initialContractId ?? "");
   const [issueDate, setIssueDate] = useState(today);
   const [dueDate, setDueDate] = useState("");
   const [paymentTerms, setPaymentTerms] = useState(
@@ -76,27 +97,189 @@ export function InvoiceBuilder({
   );
   const [notes, setNotes] = useState(profile?.default_invoice_notes ?? "");
   const [currency, setCurrency] = useState(
-    milestoneData?.currency ?? profile?.default_currency ?? "PHP"
+    contractData?.currency ?? milestoneData?.currency ?? profile?.default_currency ?? "PHP"
   );
   const [taxRate, setTaxRate] = useState(0);
-  const [items, setItems] = useState<LineItem[]>(
-    milestoneData
-      ? [
-          {
-            description: milestoneData.description
-              ? `${milestoneData.name} - ${milestoneData.description}`
-              : milestoneData.name,
-            quantity: 1,
-            unit_price: milestoneData.amount,
-          },
-        ]
-      : [{ description: "", quantity: 1, unit_price: 0 }]
-  );
+
+  function buildInitialItems(): LineItem[] {
+    if (contractData) {
+      if (contractData.type === "hourly") {
+        return [{
+          description: `${contractData.name} - hours`,
+          quantity: 0,
+          unit_price: contractData.rate ?? 0,
+        }];
+      } else {
+        const cycleLabel = contractData.billing_cycle.replace(/\b\w/g, (l) => l.toUpperCase());
+        return [{
+          description: `${contractData.name} - ${cycleLabel} payment`,
+          quantity: 1,
+          unit_price: contractData.fixed_amount ?? 0,
+        }];
+      }
+    }
+    if (milestoneData) {
+      return [{
+        description: milestoneData.description
+          ? `${milestoneData.name} - ${milestoneData.description}`
+          : milestoneData.name,
+        quantity: 1,
+        unit_price: milestoneData.amount,
+      }];
+    }
+    return [{ description: "", quantity: 1, unit_price: 0 }];
+  }
+
+  const [items, setItems] = useState<LineItem[]>(buildInitialItems());
+  const [selectedMilestoneId, setSelectedMilestoneId] = useState(milestoneId ?? "");
+  const [milestones, setMilestones] = useState<ProjectMilestone[]>([]);
+  const [loadingMilestones, setLoadingMilestones] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showTimeImport, setShowTimeImport] = useState(false);
   const [importProjectId, setImportProjectId] = useState("");
   const [importEntries, setImportEntries] = useState<TimeEntry[]>([]);
   const [loadingEntries, setLoadingEntries] = useState(false);
+
+  // Filter projects by selected client
+  const filteredProjects = clientId
+    ? projects.filter((p) => p.client_id === clientId)
+    : projects;
+
+  // Filter contracts by selected client
+  const filteredContracts = clientId
+    ? contracts.filter((c) => c.client_id === clientId)
+    : contracts;
+
+  // Fetch milestones when project changes
+  const fetchMilestones = useCallback(async (projId: string) => {
+    if (!projId) {
+      setMilestones([]);
+      return;
+    }
+    setLoadingMilestones(true);
+    const supabase = createClient();
+
+    // Fetch available milestones (not yet invoiced/paid)
+    const { data } = await supabase
+      .from("project_milestones")
+      .select("*")
+      .eq("project_id", projId)
+      .in("status", ["pending", "in_progress", "completed"])
+      .order("sort_order");
+
+    let results = data ?? [];
+
+    // If a milestone was pre-selected (from milestone card), ensure it's in the list
+    if (milestoneId && !results.some((m) => m.id === milestoneId)) {
+      const { data: current } = await supabase
+        .from("project_milestones")
+        .select("*")
+        .eq("id", milestoneId)
+        .single();
+      if (current) {
+        results = [current, ...results];
+      }
+    }
+
+    setMilestones(results);
+    setLoadingMilestones(false);
+  }, [milestoneId]);
+
+  useEffect(() => {
+    if (projectId) {
+      fetchMilestones(projectId);
+    }
+  }, [projectId, fetchMilestones]);
+
+  function handleClientChange(newClientId: string) {
+    setClientId(newClientId);
+    // Clear project and milestone if the new client doesn't match
+    if (projectId) {
+      const project = projects.find((p) => p.id === projectId);
+      if (project?.client_id !== newClientId) {
+        setProjectId("");
+        setSelectedMilestoneId("");
+        setMilestones([]);
+      }
+    }
+    // Clear contract if the new client doesn't match
+    if (selectedContractId) {
+      const contract = contracts.find((c) => c.id === selectedContractId);
+      if (contract?.client_id !== newClientId) {
+        setSelectedContractId("");
+      }
+    }
+  }
+
+  function handleProjectChange(newProjectId: string) {
+    const actualId = newProjectId === "__none__" ? "" : newProjectId;
+    setProjectId(actualId);
+    setSelectedMilestoneId("");
+
+    if (actualId) {
+      // Auto-set client from project
+      const project = projects.find((p) => p.id === actualId);
+      if (project?.client_id && !clientId) {
+        setClientId(project.client_id);
+      }
+      fetchMilestones(actualId);
+    } else {
+      setMilestones([]);
+    }
+  }
+
+  function handleMilestoneChange(newMilestoneId: string) {
+    const actualId = newMilestoneId === "__none__" ? "" : newMilestoneId;
+    setSelectedMilestoneId(actualId);
+
+    if (actualId) {
+      const milestone = milestones.find((m) => m.id === actualId);
+      if (milestone) {
+        // Pre-fill line items with milestone data
+        setItems([
+          {
+            description: milestone.description
+              ? `${milestone.name} - ${milestone.description}`
+              : milestone.name,
+            quantity: 1,
+            unit_price: milestone.amount,
+          },
+        ]);
+        setCurrency(milestone.currency);
+      }
+    }
+  }
+
+  function handleContractChange(newContractId: string) {
+    const actualId = newContractId === "__none__" ? "" : newContractId;
+    setSelectedContractId(actualId);
+
+    if (actualId) {
+      const contract = contracts.find((c) => c.id === actualId);
+      if (contract) {
+        // Auto-set client from contract
+        if (contract.client_id && !clientId) {
+          setClientId(contract.client_id);
+        }
+        setCurrency(contract.currency);
+
+        if (contract.type === "hourly") {
+          setItems([{
+            description: `${contract.name} - hours`,
+            quantity: 0,
+            unit_price: contract.rate ?? 0,
+          }]);
+        } else {
+          const cycleLabel = contract.billing_cycle.replace(/\b\w/g, (l) => l.toUpperCase());
+          setItems([{
+            description: `${contract.name} - ${cycleLabel} payment`,
+            quantity: 1,
+            unit_price: contract.fixed_amount ?? 0,
+          }]);
+        }
+      }
+    }
+  }
 
   const subtotal = items.reduce(
     (sum, item) => sum + item.quantity * item.unit_price,
@@ -179,7 +362,8 @@ export function InvoiceBuilder({
         user_id: userId,
         client_id: clientId,
         project_id: projectId || null,
-        milestone_id: milestoneId || null,
+        milestone_id: selectedMilestoneId || milestoneId || null,
+        contract_id: selectedContractId || initialContractId || null,
         invoice_number: invoiceNumber,
         status,
         issue_date: issueDate,
@@ -221,12 +405,13 @@ export function InvoiceBuilder({
       }
     }
 
-    // Update milestone status to "invoiced" if created from a milestone
-    if (milestoneId) {
+    // Update milestone status to "invoiced" if linked to a milestone
+    const linkedMilestoneId = selectedMilestoneId || milestoneId;
+    if (linkedMilestoneId) {
       await supabase
         .from("project_milestones")
         .update({ status: "invoiced" })
-        .eq("id", milestoneId);
+        .eq("id", linkedMilestoneId);
     }
 
     toast.success(`Invoice ${invoiceNumber} created`);
@@ -255,7 +440,7 @@ export function InvoiceBuilder({
             </div>
             <div className="space-y-2">
               <Label>Client</Label>
-              <Select value={clientId} onValueChange={setClientId}>
+              <Select value={clientId} onValueChange={handleClientChange}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select client" />
                 </SelectTrigger>
@@ -263,6 +448,60 @@ export function InvoiceBuilder({
                   {clients.map((c) => (
                     <SelectItem key={c.id} value={c.id}>
                       {c.company_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Project <span className="text-muted-foreground text-xs">(optional)</span></Label>
+              <Select value={projectId || "__none__"} onValueChange={handleProjectChange}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select project" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">No project</SelectItem>
+                  {filteredProjects.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {projectId && (
+              <div className="space-y-2">
+                <Label>Milestone <span className="text-muted-foreground text-xs">(optional)</span></Label>
+                <Select
+                  value={selectedMilestoneId || "__none__"}
+                  onValueChange={handleMilestoneChange}
+                  disabled={loadingMilestones}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={loadingMilestones ? "Loading..." : "Select milestone"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">No milestone</SelectItem>
+                    {milestones.map((m) => (
+                      <SelectItem key={m.id} value={m.id}>
+                        {m.name} — {formatCurrency(m.amount, m.currency)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label>Contract <span className="text-muted-foreground text-xs">(optional)</span></Label>
+              <Select value={selectedContractId || "__none__"} onValueChange={handleContractChange}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select contract" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">No contract</SelectItem>
+                  {filteredContracts.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name} ({c.type === "hourly" ? "Hourly" : "Fixed"})
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -301,8 +540,11 @@ export function InvoiceBuilder({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="PHP">PHP (₱)</SelectItem>
-                    <SelectItem value="USD">USD ($)</SelectItem>
+                    {CURRENCIES.map((c) => (
+                      <SelectItem key={c.value} value={c.value}>
+                        {c.label}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>

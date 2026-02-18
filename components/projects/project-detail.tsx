@@ -220,18 +220,20 @@ export function ProjectDetail({
               {project.description}
             </p>
           )}
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <div>
-              <p className="text-sm text-muted-foreground">Total Hours</p>
-              <p className="text-lg font-bold">{totalHours.toFixed(1)}h</p>
-            </div>
+          <div className={`grid gap-4 sm:grid-cols-2 ${project.type === "fixed" ? "lg:grid-cols-3" : "lg:grid-cols-4"}`}>
+            {project.type !== "fixed" && (
+              <div>
+                <p className="text-sm text-muted-foreground">Total Hours</p>
+                <p className="text-lg font-bold">{totalHours.toFixed(1)}h</p>
+              </div>
+            )}
             <div>
               <p className="text-sm text-muted-foreground">Total Billed</p>
               <p className="text-lg font-bold">{formatCurrency(totalBilled, project.currency)}</p>
             </div>
             <div>
               <p className="text-sm text-muted-foreground">
-                {project.type === "hourly" ? "Rate" : "Fixed Price"}
+                {project.type === "hourly" ? "Rate" : project.type === "retainer" ? "Retainer Fee" : "Fixed Price"}
               </p>
               <p className="text-lg font-bold">
                 {project.rate
@@ -263,103 +265,105 @@ export function ProjectDetail({
         </CardContent>
       </Card>
 
-      {/* Time Entries */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-base">
-            Time Entries ({entries.length})
-          </CardTitle>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => router.push("/time")}
-          >
-            <Clock className="mr-2 h-4 w-4" />
-            Log Time
-          </Button>
-        </CardHeader>
-        <CardContent>
-          {entries.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-4">
-              No time entries yet.
-            </p>
-          ) : (
-            <>
-            <div className="rounded-md border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Description</TableHead>
-                    <TableHead className="text-right">Hours</TableHead>
-                    <TableHead>Billable</TableHead>
-                    <TableHead className="w-[80px]"></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {paginatedTimeEntries.map((entry) => (
-                    <TableRow key={entry.id}>
-                      <TableCell>{formatDate(entry.date)}</TableCell>
-                      <TableCell>{entry.description || "-"}</TableCell>
-                      <TableCell className="text-right">
-                        {entry.hours.toFixed(1)}h
-                      </TableCell>
-                      <TableCell>
-                        {entry.is_billable ? (
-                          <Badge variant="secondary" className="bg-green-100 text-green-800">
-                            Yes
-                          </Badge>
-                        ) : (
-                          <Badge variant="secondary">No</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7"
-                            onClick={() => openEditEntry(entry)}
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 text-destructive"
-                            onClick={() => setDeleteEntryId(entry.id)}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                      </TableCell>
+      {/* Time Entries - only for hourly/retainer projects */}
+      {project.type !== "fixed" && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="text-base">
+              Time Entries ({entries.length})
+            </CardTitle>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => router.push("/time")}
+            >
+              <Clock className="mr-2 h-4 w-4" />
+              Log Time
+            </Button>
+          </CardHeader>
+          <CardContent>
+            {entries.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                No time entries yet.
+              </p>
+            ) : (
+              <>
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Description</TableHead>
+                      <TableHead className="text-right">Hours</TableHead>
+                      <TableHead>Billable</TableHead>
+                      <TableHead className="w-[80px]"></TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-            {entries.length > PAGE_SIZE && (
-              <div className="flex items-center justify-between pt-4">
-                <p className="text-sm text-muted-foreground">
-                  Showing {timePage * PAGE_SIZE + 1}–{Math.min((timePage + 1) * PAGE_SIZE, entries.length)} of {entries.length}
-                </p>
-                <div className="flex items-center gap-2">
-                  <Button variant="outline" size="sm" onClick={() => setTimePage((p) => p - 1)} disabled={timePage === 0}>
-                    <ChevronLeft className="h-4 w-4" />
-                    Previous
-                  </Button>
-                  <span className="text-sm text-muted-foreground">{timePage + 1} / {timeTotalPages}</span>
-                  <Button variant="outline" size="sm" onClick={() => setTimePage((p) => p + 1)} disabled={timePage >= timeTotalPages - 1}>
-                    Next
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
+                  </TableHeader>
+                  <TableBody>
+                    {paginatedTimeEntries.map((entry) => (
+                      <TableRow key={entry.id}>
+                        <TableCell>{formatDate(entry.date)}</TableCell>
+                        <TableCell>{entry.description || "-"}</TableCell>
+                        <TableCell className="text-right">
+                          {entry.hours.toFixed(1)}h
+                        </TableCell>
+                        <TableCell>
+                          {entry.is_billable ? (
+                            <Badge variant="secondary" className="bg-green-100 text-green-800">
+                              Yes
+                            </Badge>
+                          ) : (
+                            <Badge variant="secondary">No</Badge>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7"
+                              onClick={() => openEditEntry(entry)}
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-destructive"
+                              onClick={() => setDeleteEntryId(entry.id)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               </div>
+              {entries.length > PAGE_SIZE && (
+                <div className="flex items-center justify-between pt-4">
+                  <p className="text-sm text-muted-foreground">
+                    Showing {timePage * PAGE_SIZE + 1}–{Math.min((timePage + 1) * PAGE_SIZE, entries.length)} of {entries.length}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setTimePage((p) => p - 1)} disabled={timePage === 0}>
+                      <ChevronLeft className="h-4 w-4" />
+                      Previous
+                    </Button>
+                    <span className="text-sm text-muted-foreground">{timePage + 1} / {timeTotalPages}</span>
+                    <Button variant="outline" size="sm" onClick={() => setTimePage((p) => p + 1)} disabled={timePage >= timeTotalPages - 1}>
+                      Next
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+              </>
             )}
-            </>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Milestones */}
       <MilestoneCard
@@ -412,66 +416,69 @@ export function ProjectDetail({
         </DialogContent>
       </Dialog>
 
-      {/* Edit Time Entry Dialog */}
-      <Dialog open={!!editEntry} onOpenChange={() => setEditEntry(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edit Time Entry</DialogTitle>
-            <DialogDescription>
-              Update the details for this time entry.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label>Date</Label>
-                <Input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} />
+      {/* Edit Time Entry Dialog - only for non-fixed projects */}
+      {project.type !== "fixed" && (
+        <>
+          <Dialog open={!!editEntry} onOpenChange={() => setEditEntry(null)}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Edit Time Entry</DialogTitle>
+                <DialogDescription>
+                  Update the details for this time entry.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label>Date</Label>
+                    <Input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Hours</Label>
+                    <Input type="number" step="0.25" min="0.1" value={editHours} onChange={(e) => setEditHours(e.target.value)} />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Description</Label>
+                  <Input value={editDescription} onChange={(e) => setEditDescription(e.target.value)} placeholder="What did you work on?" />
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="edit-entry-billable"
+                    checked={editBillable}
+                    onChange={(e) => setEditBillable(e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300"
+                  />
+                  <Label htmlFor="edit-entry-billable" className="text-sm font-normal">Billable</Label>
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label>Hours</Label>
-                <Input type="number" step="0.25" min="0.1" value={editHours} onChange={(e) => setEditHours(e.target.value)} />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>Description</Label>
-              <Input value={editDescription} onChange={(e) => setEditDescription(e.target.value)} placeholder="What did you work on?" />
-            </div>
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="edit-entry-billable"
-                checked={editBillable}
-                onChange={(e) => setEditBillable(e.target.checked)}
-                className="h-4 w-4 rounded border-gray-300"
-              />
-              <Label htmlFor="edit-entry-billable" className="text-sm font-normal">Billable</Label>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditEntry(null)}>Cancel</Button>
-            <Button onClick={handleEditEntry} disabled={savingEntry}>
-              {savingEntry && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Save Changes
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setEditEntry(null)}>Cancel</Button>
+                <Button onClick={handleEditEntry} disabled={savingEntry}>
+                  {savingEntry && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Save Changes
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
-      {/* Delete Time Entry Confirmation */}
-      <Dialog open={!!deleteEntryId} onOpenChange={() => setDeleteEntryId(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete Time Entry</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete this time entry? This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteEntryId(null)}>Cancel</Button>
-            <Button variant="destructive" onClick={handleDeleteEntry}>Delete</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          <Dialog open={!!deleteEntryId} onOpenChange={() => setDeleteEntryId(null)}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Delete Time Entry</DialogTitle>
+                <DialogDescription>
+                  Are you sure you want to delete this time entry? This action cannot be undone.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setDeleteEntryId(null)}>Cancel</Button>
+                <Button variant="destructive" onClick={handleDeleteEntry}>Delete</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </>
+      )}
     </div>
   );
 }

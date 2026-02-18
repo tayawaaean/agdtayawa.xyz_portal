@@ -32,135 +32,133 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Plus, ChevronLeft, ChevronRight, Pencil, Trash2, Loader2, FolderKanban, PlayCircle, CircleDashed, CheckCircle2 } from "lucide-react";
+import { Plus, ChevronLeft, ChevronRight, Pencil, Trash2, Loader2, FileCheck2, PlayCircle, PauseCircle, StopCircle } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
-import { STATUS_COLORS, CURRENCIES } from "@/lib/constants";
+import { STATUS_COLORS, CURRENCIES, BILLING_CYCLES } from "@/lib/constants";
 import { formatCurrency } from "@/lib/utils";
-import type { Project, ProjectStatus, ProjectType } from "@/lib/types";
-import { NewProjectDialog } from "./new-project-dialog";
+import type { Contract, ContractType, ContractStatus, BillingCycle } from "@/lib/types";
+import { NewContractDialog } from "./new-contract-dialog";
 
 const PAGE_SIZE = 10;
 
-type ProjectWithClient = Project & { client?: { id: string; company_name: string } | null };
+type ContractWithClient = Contract & { client?: { id: string; company_name: string } | null };
 
-interface ProjectTableProps {
-  projects: ProjectWithClient[];
-  clients: { id: string; company_name: string }[];
+interface ContractTableProps {
+  contracts: ContractWithClient[];
   userId: string;
-  defaultRate?: number | null;
 }
 
-export function ProjectTable({
-  projects: initialProjects,
-  clients,
+export function ContractTable({
+  contracts: initialContracts,
   userId,
-  defaultRate,
-}: ProjectTableProps) {
+}: ContractTableProps) {
   const router = useRouter();
-  const [projects, setProjects] = useState(initialProjects);
+  const [contracts, setContracts] = useState(initialContracts);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [page, setPage] = useState(0);
   const [deleteId, setDeleteId] = useState<string | null>(null);
-  const [editProject, setEditProject] = useState<ProjectWithClient | null>(null);
+  const [editContract, setEditContract] = useState<ContractWithClient | null>(null);
   const [editName, setEditName] = useState("");
-  const [editType, setEditType] = useState<ProjectType>("hourly");
-  const [editStatus, setEditStatus] = useState<ProjectStatus>("not_started");
+  const [editType, setEditType] = useState<ContractType>("hourly");
+  const [editStatus, setEditStatus] = useState<ContractStatus>("active");
+  const [editBillingCycle, setEditBillingCycle] = useState<BillingCycle>("weekly");
   const [editRate, setEditRate] = useState("");
+  const [editFixedAmount, setEditFixedAmount] = useState("");
   const [editCurrency, setEditCurrency] = useState("PHP");
-  const [editDeadline, setEditDeadline] = useState("");
   const [saving, setSaving] = useState(false);
 
-  // Realtime subscription for projects table
-  useRealtime<Project>({
-    table: "projects",
+  useRealtime<Contract>({
+    table: "contracts",
     filter: `user_id=eq.${userId}`,
-    onInsert: useCallback(async (record: Project) => {
-      // Fetch full record with joined client data
+    onInsert: useCallback(async (record: Contract) => {
       const supabase = createClient();
       const { data } = await supabase
-        .from("projects")
+        .from("contracts")
         .select("*, client:clients(id, company_name)")
         .eq("id", record.id)
         .single();
       if (data) {
-        setProjects((prev) => {
-          if (prev.some((p) => p.id === data.id)) return prev;
-          return [data as ProjectWithClient, ...prev];
+        setContracts((prev) => {
+          if (prev.some((c) => c.id === data.id)) return prev;
+          return [data as ContractWithClient, ...prev];
         });
       }
     }, []),
-    onUpdate: useCallback((record: Project) => {
-      setProjects((prev) =>
-        prev.map((p) => {
-          if (p.id !== record.id) return p;
+    onUpdate: useCallback((record: Contract) => {
+      setContracts((prev) =>
+        prev.map((c) => {
+          if (c.id !== record.id) return c;
           const { client: _, ...fields } = record as any;
-          return { ...p, ...fields };
+          return { ...c, ...fields };
         })
       );
     }, []),
-    onDelete: useCallback((record: Project) => {
-      setProjects((prev) => prev.filter((p) => p.id !== record.id));
+    onDelete: useCallback((record: Contract) => {
+      setContracts((prev) => prev.filter((c) => c.id !== record.id));
     }, []),
   });
 
   const statusCounts = {
-    all: projects.length,
-    in_progress: projects.filter((p) => p.status === "in_progress").length,
-    not_started: projects.filter((p) => p.status === "not_started").length,
-    completed: projects.filter((p) => p.status === "completed").length,
+    all: contracts.length,
+    active: contracts.filter((c) => c.status === "active").length,
+    paused: contracts.filter((c) => c.status === "paused").length,
+    ended: contracts.filter((c) => c.status === "ended").length,
   };
 
-  const filtered = projects.filter(
-    (p) => statusFilter === "all" || p.status === statusFilter
+  const filtered = contracts.filter(
+    (c) => statusFilter === "all" || c.status === statusFilter
   );
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const paginatedProjects = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const paginatedContracts = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
-  function openEdit(project: ProjectWithClient) {
-    setEditProject(project);
-    setEditName(project.name);
-    setEditType(project.type);
-    setEditStatus(project.status);
-    setEditRate(project.rate?.toString() || "");
-    setEditCurrency(project.currency || "PHP");
-    setEditDeadline(project.deadline || "");
+  function openEdit(contract: ContractWithClient) {
+    setEditContract(contract);
+    setEditName(contract.name);
+    setEditType(contract.type);
+    setEditStatus(contract.status);
+    setEditBillingCycle(contract.billing_cycle);
+    setEditRate(contract.rate?.toString() || "");
+    setEditFixedAmount(contract.fixed_amount?.toString() || "");
+    setEditCurrency(contract.currency || "PHP");
   }
 
   async function handleEdit() {
-    if (!editProject) return;
+    if (!editContract) return;
     if (!editName.trim()) {
-      toast.error("Project name is required");
+      toast.error("Contract name is required");
       return;
     }
     setSaving(true);
     const supabase = createClient();
-    const rate = editRate ? Number(editRate) : null;
+    const rate = editType === "hourly" && editRate ? Number(editRate) : null;
+    const fixedAmount = editType === "fixed" && editFixedAmount ? Number(editFixedAmount) : null;
     const { error } = await supabase
-      .from("projects")
+      .from("contracts")
       .update({
         name: editName.trim(),
         type: editType,
         status: editStatus,
+        billing_cycle: editBillingCycle,
         rate,
+        fixed_amount: fixedAmount,
         currency: editCurrency,
-        deadline: editDeadline || null,
       })
-      .eq("id", editProject.id);
+      .eq("id", editContract.id);
 
     if (error) {
       toast.error("Failed to update: " + error.message);
     } else {
-      setProjects((prev) =>
-        prev.map((p) =>
-          p.id === editProject.id
-            ? { ...p, name: editName.trim(), type: editType, status: editStatus, rate, currency: editCurrency, deadline: editDeadline || null }
-            : p
+      setContracts((prev) =>
+        prev.map((c) =>
+          c.id === editContract.id
+            ? { ...c, name: editName.trim(), type: editType, status: editStatus, billing_cycle: editBillingCycle, rate, fixed_amount: fixedAmount, currency: editCurrency }
+            : c
         )
       );
-      toast.success("Project updated");
-      setEditProject(null);
+      toast.success("Contract updated");
+      setEditContract(null);
     }
     setSaving(false);
   }
@@ -169,21 +167,25 @@ export function ProjectTable({
     if (!deleteId) return;
     const supabase = createClient();
     const { error } = await supabase
-      .from("projects")
+      .from("contracts")
       .delete()
       .eq("id", deleteId);
 
     if (error) {
       toast.error("Failed to delete: " + error.message);
     } else {
-      setProjects((prev) => prev.filter((p) => p.id !== deleteId));
-      toast.success("Project deleted");
+      setContracts((prev) => prev.filter((c) => c.id !== deleteId));
+      toast.success("Contract deleted");
     }
     setDeleteId(null);
   }
 
   function formatStatus(status: string): string {
     return status.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
+  }
+
+  function formatBillingCycle(cycle: string): string {
+    return BILLING_CYCLES.find((b) => b.value === cycle)?.label ?? cycle;
   }
 
   return (
@@ -193,53 +195,53 @@ export function ProjectTable({
         <Card className="relative overflow-hidden gap-2 py-4">
           <div className="absolute left-0 top-0 bottom-0 w-1 bg-gray-400" />
           <CardHeader className="flex flex-row items-center justify-between pb-0">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Projects</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Total Contracts</CardTitle>
             <div className="rounded-lg bg-gray-100 p-2">
-              <FolderKanban className="h-4 w-4 text-gray-600" />
+              <FileCheck2 className="h-4 w-4 text-gray-600" />
             </div>
           </CardHeader>
           <CardContent>
             <p className="text-3xl font-bold">{statusCounts.all}</p>
-            <p className="text-xs text-muted-foreground mt-1">All projects</p>
+            <p className="text-xs text-muted-foreground mt-1">All contracts</p>
           </CardContent>
         </Card>
         <Card className="relative overflow-hidden gap-2 py-4">
-          <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500" />
+          <div className="absolute left-0 top-0 bottom-0 w-1 bg-green-500" />
           <CardHeader className="flex flex-row items-center justify-between pb-0">
-            <CardTitle className="text-sm font-medium text-muted-foreground">In Progress</CardTitle>
-            <div className="rounded-lg bg-blue-50 p-2">
-              <PlayCircle className="h-4 w-4 text-blue-600" />
+            <CardTitle className="text-sm font-medium text-muted-foreground">Active</CardTitle>
+            <div className="rounded-lg bg-green-50 p-2">
+              <PlayCircle className="h-4 w-4 text-green-600" />
             </div>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-bold">{statusCounts.in_progress}</p>
-            <p className="text-xs text-muted-foreground mt-1">Active work</p>
+            <p className="text-3xl font-bold">{statusCounts.active}</p>
+            <p className="text-xs text-muted-foreground mt-1">Currently billing</p>
+          </CardContent>
+        </Card>
+        <Card className="relative overflow-hidden gap-2 py-4">
+          <div className="absolute left-0 top-0 bottom-0 w-1 bg-orange-400" />
+          <CardHeader className="flex flex-row items-center justify-between pb-0">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Paused</CardTitle>
+            <div className="rounded-lg bg-orange-50 p-2">
+              <PauseCircle className="h-4 w-4 text-orange-600" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-bold">{statusCounts.paused}</p>
+            <p className="text-xs text-muted-foreground mt-1">On hold</p>
           </CardContent>
         </Card>
         <Card className="relative overflow-hidden gap-2 py-4">
           <div className="absolute left-0 top-0 bottom-0 w-1 bg-gray-400" />
           <CardHeader className="flex flex-row items-center justify-between pb-0">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Not Started</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Ended</CardTitle>
             <div className="rounded-lg bg-gray-100 p-2">
-              <CircleDashed className="h-4 w-4 text-gray-600" />
+              <StopCircle className="h-4 w-4 text-gray-600" />
             </div>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-bold">{statusCounts.not_started}</p>
-            <p className="text-xs text-muted-foreground mt-1">Pending</p>
-          </CardContent>
-        </Card>
-        <Card className="relative overflow-hidden gap-2 py-4">
-          <div className="absolute left-0 top-0 bottom-0 w-1 bg-emerald-500" />
-          <CardHeader className="flex flex-row items-center justify-between pb-0">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Completed</CardTitle>
-            <div className="rounded-lg bg-emerald-50 p-2">
-              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <p className="text-3xl font-bold">{statusCounts.completed}</p>
-            <p className="text-xs text-muted-foreground mt-1">Finished</p>
+            <p className="text-3xl font-bold">{statusCounts.ended}</p>
+            <p className="text-xs text-muted-foreground mt-1">Completed</p>
           </CardContent>
         </Card>
       </div>
@@ -247,29 +249,27 @@ export function ProjectTable({
       <Tabs value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(0); }}>
         <TabsList>
           <TabsTrigger value="all">All</TabsTrigger>
-          <TabsTrigger value="in_progress">In Progress</TabsTrigger>
-          <TabsTrigger value="not_started">Not Started</TabsTrigger>
-          <TabsTrigger value="completed">Completed</TabsTrigger>
+          <TabsTrigger value="active">Active</TabsTrigger>
+          <TabsTrigger value="paused">Paused</TabsTrigger>
+          <TabsTrigger value="ended">Ended</TabsTrigger>
         </TabsList>
       </Tabs>
 
       {filtered.length === 0 ? (
         <div className="text-center py-12">
           <p className="text-muted-foreground">
-            {projects.length === 0
-              ? "No projects yet. Create your first project!"
-              : "No projects match this filter."}
+            {contracts.length === 0
+              ? "No contracts yet. Create your first contract!"
+              : "No contracts match this filter."}
           </p>
-          {projects.length === 0 && (
+          {contracts.length === 0 && (
             <div className="mt-4">
-              <NewProjectDialog
-                clients={clients}
+              <NewContractDialog
                 userId={userId}
-                defaultRate={defaultRate}
                 trigger={
                   <Button variant="outline" size="sm">
                     <Plus className="mr-2 h-4 w-4" />
-                    Create Project
+                    Create Contract
                   </Button>
                 }
               />
@@ -282,33 +282,49 @@ export function ProjectTable({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Project</TableHead>
+                <TableHead>Name</TableHead>
                 <TableHead className="hidden sm:table-cell">Client</TableHead>
                 <TableHead>Type</TableHead>
+                <TableHead className="hidden md:table-cell">Billing Cycle</TableHead>
+                <TableHead className="hidden lg:table-cell text-right">Rate / Amount</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="w-[80px]"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {paginatedProjects.map((project) => (
+              {paginatedContracts.map((contract) => (
                 <TableRow
-                  key={project.id}
+                  key={contract.id}
                   className="cursor-pointer"
-                  onClick={() => router.push(`/projects/${project.id}`)}
+                  onClick={() => router.push(`/contracts/${contract.id}`)}
                 >
-                  <TableCell className="font-medium">{project.name}</TableCell>
+                  <TableCell className="font-medium">{contract.name}</TableCell>
                   <TableCell className="hidden sm:table-cell">
-                    {project.client?.company_name ?? "-"}
+                    {contract.client?.company_name ?? "-"}
                   </TableCell>
                   <TableCell>
-                    <Badge variant="outline">{project.type}</Badge>
+                    <Badge variant="outline">
+                      {contract.type === "hourly" ? "Hourly" : "Fixed"}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="hidden md:table-cell">
+                    {formatBillingCycle(contract.billing_cycle)}
+                  </TableCell>
+                  <TableCell className="hidden lg:table-cell text-right">
+                    {contract.type === "hourly"
+                      ? contract.rate
+                        ? `${formatCurrency(contract.rate, contract.currency)}/hr`
+                        : "-"
+                      : contract.fixed_amount
+                        ? formatCurrency(contract.fixed_amount, contract.currency)
+                        : "-"}
                   </TableCell>
                   <TableCell>
                     <Badge
                       variant="secondary"
-                      className={STATUS_COLORS[project.status] || ""}
+                      className={STATUS_COLORS[contract.status] || ""}
                     >
-                      {formatStatus(project.status)}
+                      {formatStatus(contract.status)}
                     </Badge>
                   </TableCell>
                   <TableCell>
@@ -319,7 +335,7 @@ export function ProjectTable({
                         className="h-7 w-7"
                         onClick={(e) => {
                           e.stopPropagation();
-                          openEdit(project);
+                          openEdit(contract);
                         }}
                       >
                         <Pencil className="h-3.5 w-3.5" />
@@ -330,7 +346,7 @@ export function ProjectTable({
                         className="h-7 w-7 text-destructive"
                         onClick={(e) => {
                           e.stopPropagation();
-                          setDeleteId(project.id);
+                          setDeleteId(contract.id);
                         }}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
@@ -364,53 +380,67 @@ export function ProjectTable({
       )}
 
       {/* Edit Dialog */}
-      <Dialog open={!!editProject} onOpenChange={() => setEditProject(null)}>
+      <Dialog open={!!editContract} onOpenChange={() => setEditContract(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit Project</DialogTitle>
+            <DialogTitle>Edit Contract</DialogTitle>
             <DialogDescription>
-              Update the details for this project.
+              Update the details for this contract.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Project Name</Label>
-              <Input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Project name" />
+              <Label>Contract Name</Label>
+              <Input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Contract name" />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label>Type</Label>
-                <Select value={editType} onValueChange={(v) => setEditType(v as ProjectType)}>
+                <Select value={editType} onValueChange={(v) => setEditType(v as ContractType)}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="hourly">Hourly</SelectItem>
                     <SelectItem value="fixed">Fixed</SelectItem>
-                    <SelectItem value="retainer">Retainer</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
                 <Label>Status</Label>
-                <Select value={editStatus} onValueChange={(v) => setEditStatus(v as ProjectStatus)}>
+                <Select value={editStatus} onValueChange={(v) => setEditStatus(v as ContractStatus)}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="not_started">Not Started</SelectItem>
-                    <SelectItem value="in_progress">In Progress</SelectItem>
-                    <SelectItem value="completed">Completed</SelectItem>
-                    <SelectItem value="on_hold">On Hold</SelectItem>
-                    <SelectItem value="cancelled">Cancelled</SelectItem>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="paused">Paused</SelectItem>
+                    <SelectItem value="ended">Ended</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
-            <div className={`grid gap-3 ${editType === "fixed" ? "grid-cols-3" : "grid-cols-2 sm:grid-cols-4"}`}>
+            <div className="grid grid-cols-3 gap-3">
               <div className="space-y-2">
-                <Label>{editType === "fixed" ? "Fixed Price" : editType === "retainer" ? "Retainer Fee" : "Rate"}</Label>
-                <Input type="number" step="0.01" min="0" value={editRate} onChange={(e) => setEditRate(e.target.value)} placeholder="0.00" />
+                <Label>Billing Cycle</Label>
+                <Select value={editBillingCycle} onValueChange={(v) => setEditBillingCycle(v as BillingCycle)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {BILLING_CYCLES.map((b) => (
+                      <SelectItem key={b.value} value={b.value}>{b.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>{editType === "hourly" ? "Hourly Rate" : "Fixed Amount"}</Label>
+                {editType === "hourly" ? (
+                  <Input type="number" step="0.01" min="0" value={editRate} onChange={(e) => setEditRate(e.target.value)} placeholder="0.00" />
+                ) : (
+                  <Input type="number" step="0.01" min="0" value={editFixedAmount} onChange={(e) => setEditFixedAmount(e.target.value)} placeholder="0.00" />
+                )}
               </div>
               <div className="space-y-2">
                 <Label>Currency</Label>
@@ -425,14 +455,10 @@ export function ProjectTable({
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-2">
-                <Label>Deadline</Label>
-                <Input type="date" value={editDeadline} onChange={(e) => setEditDeadline(e.target.value)} />
-              </div>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditProject(null)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setEditContract(null)}>Cancel</Button>
             <Button onClick={handleEdit} disabled={saving}>
               {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Save Changes
@@ -445,9 +471,9 @@ export function ProjectTable({
       <Dialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete Project</DialogTitle>
+            <DialogTitle>Delete Contract</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete this project? This will also delete all associated time entries. This action cannot be undone.
+              Are you sure you want to delete this contract? This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

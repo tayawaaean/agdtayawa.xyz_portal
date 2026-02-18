@@ -23,6 +23,7 @@ export function NewExpenseDialog({ userId, trigger }: NewExpenseDialogProps) {
   const [open, setOpen] = useState(false);
   const [categories, setCategories] = useState<string[]>([]);
   const [projects, setProjects] = useState<{ id: string; name: string }[]>([]);
+  const [accounts, setAccounts] = useState<{ id: string; account_name: string; account_type: "bank_account" | "credit_card"; currency: string }[]>([]);
   const router = useRouter();
 
   useEffect(() => {
@@ -40,9 +41,16 @@ export function NewExpenseDialog({ userId, trigger }: NewExpenseDialogProps) {
         .select("id, name")
         .in("status", ["not_started", "in_progress"])
         .order("name"),
-    ]).then(([catRes, projRes]) => {
+      supabase
+        .from("accounts")
+        .select("id, account_name, account_type, currency")
+        .eq("user_id", userId)
+        .eq("status", "active")
+        .order("account_name"),
+    ]).then(([catRes, projRes, acctRes]) => {
       setCategories(catRes.data?.map((c) => c.name) ?? []);
       setProjects(projRes.data ?? []);
+      setAccounts(acctRes.data ?? []);
     });
   }, [open, userId]);
 
@@ -72,6 +80,7 @@ export function NewExpenseDialog({ userId, trigger }: NewExpenseDialogProps) {
           userId={userId}
           categories={categories}
           projects={projects}
+          accounts={accounts}
           variant="modal"
           onSuccess={handleSuccess}
         />

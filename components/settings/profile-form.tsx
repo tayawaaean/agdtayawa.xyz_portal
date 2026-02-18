@@ -22,6 +22,7 @@ import { Loader2, Plus, Trash2 } from "lucide-react";
 import type { Profile, PaymentMethodConfig, ExpenseCategory } from "@/lib/types";
 import { CURRENCIES, PAYMENT_METHODS } from "@/lib/constants";
 import { ExpenseCategories } from "./expense-categories";
+import { AccountForm } from "./account-form";
 
 const profileSchema = z.object({
   business_name: z.string().optional(),
@@ -43,10 +44,11 @@ type ProfileFormData = z.infer<typeof profileSchema>;
 interface ProfileFormProps {
   profile: Profile | null;
   userId: string;
+  userEmail: string;
   categories: ExpenseCategory[];
 }
 
-export function ProfileForm({ profile, userId, categories }: ProfileFormProps) {
+export function ProfileForm({ profile, userId, userEmail, categories }: ProfileFormProps) {
   const {
     register,
     handleSubmit,
@@ -131,6 +133,7 @@ export function ProfileForm({ profile, userId, categories }: ProfileFormProps) {
         <TabsTrigger value="payments">Payments</TabsTrigger>
         <TabsTrigger value="tax">Tax</TabsTrigger>
         <TabsTrigger value="categories">Categories</TabsTrigger>
+        <TabsTrigger value="account">Account</TabsTrigger>
       </TabsList>
 
       <form onSubmit={handleSubmit(onSubmit)}>
@@ -387,6 +390,11 @@ export function ProfileForm({ profile, userId, categories }: ProfileFormProps) {
       {/* ── Categories Tab (outside form, managed separately) ── */}
       <TabsContent value="categories">
         <ExpenseCategories categories={categories} userId={userId} />
+      </TabsContent>
+
+      {/* ── Account Tab (outside form, managed separately) ── */}
+      <TabsContent value="account">
+        <AccountForm userEmail={userEmail} />
       </TabsContent>
     </Tabs>
   );

@@ -26,6 +26,7 @@ export default async function SettingsPage() {
         <ProfileForm
           profile={profile}
           userId={session!.user.id}
+          userEmail={session!.user.email!}
           categories={categories ?? []}
         />
       </div>
