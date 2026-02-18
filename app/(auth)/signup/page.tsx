@@ -20,10 +20,11 @@ export default function SignupPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  async function handleSignup(formData: FormData) {
+  async function handleSignup(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
     setError(null);
     setLoading(true);
-    const result = await signUp(formData);
+    const result = await signUp(new FormData(e.currentTarget));
     if (result?.error) {
       setError(result.error);
       setLoading(false);
@@ -39,7 +40,7 @@ export default function SignupPage() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form action={handleSignup} className="space-y-4">
+        <form onSubmit={handleSignup} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="full_name">Full Name</Label>
             <div className="relative">

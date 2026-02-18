@@ -20,10 +20,11 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  async function handleLogin(formData: FormData) {
+  async function handleLogin(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
     setError(null);
     setLoading(true);
-    const result = await signIn(formData);
+    const result = await signIn(new FormData(e.currentTarget));
     if (result?.error) {
       setError(result.error);
       setLoading(false);
@@ -37,7 +38,7 @@ export default function LoginPage() {
         <CardDescription>Sign in to manage your freelance business</CardDescription>
       </CardHeader>
       <CardContent>
-        <form action={handleLogin} className="space-y-4">
+        <form onSubmit={handleLogin} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
             <div className="relative">
