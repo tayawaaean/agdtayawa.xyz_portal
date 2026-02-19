@@ -3,13 +3,13 @@ import bcrypt from "bcryptjs";
 import { cookies } from "next/headers";
 import { encode } from "next-auth/jwt";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
-
 export async function POST(request: Request) {
   try {
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+
     const { email, password } = await request.json();
 
     if (!email || !password) {
@@ -36,11 +36,10 @@ export async function POST(request: Request) {
     // Create JWT token (same format as NextAuth)
     const secret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET;
     if (!secret) {
-      return Response.json({ error: "Server configuration error" }, { status: 500 });
+      return Response.json({ error: "AUTH_SECRET is not set" }, { status: 500 });
     }
 
     // In production (HTTPS), next-auth uses __Secure- prefix for cookies
-    // The salt must match the cookie name for auth() to decode it
     const isSecure = process.env.NODE_ENV === "production";
     const cookieName = isSecure
       ? "__Secure-authjs.session-token"
@@ -64,11 +63,12 @@ export async function POST(request: Request) {
       secure: isSecure,
       sameSite: "lax",
       path: "/",
-      maxAge: 30 * 24 * 60 * 60, // 30 days
+      maxAge: 30 * 24 * 60 * 60,
     });
 
     return Response.json({ success: true });
-  } catch {
-    return Response.json({ error: "Something went wrong" }, { status: 500 });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return Response.json({ error: message }, { status: 500 });
   }
 }

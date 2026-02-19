@@ -2,13 +2,13 @@ import { createClient } from "@supabase/supabase-js";
 import bcrypt from "bcryptjs";
 import { DEFAULT_EXPENSE_CATEGORIES } from "@/lib/constants";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
-
 export async function POST(request: Request) {
   try {
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+
     const { email, password, full_name } = await request.json();
 
     if (!email || !password || !full_name) {
@@ -37,7 +37,7 @@ export async function POST(request: Request) {
       .single();
 
     if (userError || !user) {
-      return Response.json({ error: "Failed to create account" }, { status: 500 });
+      return Response.json({ error: "Failed to create account: " + (userError?.message ?? "") }, { status: 500 });
     }
 
     // Create profile
@@ -54,7 +54,8 @@ export async function POST(request: Request) {
     await supabase.from("expense_categories").insert(categories);
 
     return Response.json({ success: true });
-  } catch {
-    return Response.json({ error: "Something went wrong" }, { status: 500 });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return Response.json({ error: message }, { status: 500 });
   }
 }

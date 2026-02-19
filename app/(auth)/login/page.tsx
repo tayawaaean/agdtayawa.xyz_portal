@@ -40,8 +40,8 @@ export default function LoginPage() {
       } else {
         window.location.href = "/";
       }
-    } catch {
-      setError("Something went wrong. Please try again.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Network error. Please try again.");
       setLoading(false);
     }
   }
