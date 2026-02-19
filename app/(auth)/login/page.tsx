@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { signIn } from "@/lib/supabase/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,24 +25,15 @@ export default function LoginPage() {
     setError(null);
     setLoading(true);
     try {
-      const formData = new FormData(e.currentTarget);
-      const res = await fetch("/api/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: formData.get("email"),
-          password: formData.get("password"),
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || "Invalid email or password");
+      const result = await signIn(new FormData(e.currentTarget));
+      if (result?.error) {
+        setError(result.error);
         setLoading(false);
       } else {
         window.location.href = "/";
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Network error. Please try again.");
+      setError(err instanceof Error ? err.message : "Network error");
       setLoading(false);
     }
   }
