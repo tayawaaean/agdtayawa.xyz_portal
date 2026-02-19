@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { signUp } from "@/lib/supabase/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,24 +27,30 @@ export default function SignupPage() {
       const formData = new FormData(e.currentTarget);
       const email = formData.get("email") as string;
       const password = formData.get("password") as string;
+      const full_name = formData.get("full_name") as string;
 
-      // Create account via server action
-      const result = await signUp(formData);
-      if (result?.error) {
-        setError(result.error);
+      // Create account
+      const signupRes = await fetch("/api/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password, full_name }),
+      });
+      const signupData = await signupRes.json();
+      if (!signupRes.ok) {
+        setError(signupData.error || "Failed to create account");
         setLoading(false);
         return;
       }
 
-      // Sign in via custom API route
-      const res = await fetch("/api/login", {
+      // Sign in
+      const loginRes = await fetch("/api/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || "Account created but sign-in failed. Please log in.");
+      const loginData = await loginRes.json();
+      if (!loginRes.ok) {
+        setError(loginData.error || "Account created but sign-in failed. Please log in.");
         setLoading(false);
       } else {
         window.location.href = "/";
