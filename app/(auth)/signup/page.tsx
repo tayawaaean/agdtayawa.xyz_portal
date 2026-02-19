@@ -38,18 +38,12 @@ export default function SignupPage() {
         return;
       }
 
-      // Sign in via client-side (properly sets cookies)
-      const signInResult = await signIn("credentials", {
+      // Sign in and redirect (let next-auth handle the redirect)
+      await signIn("credentials", {
         email,
         password,
-        redirect: false,
+        callbackUrl: "/",
       });
-      if (signInResult?.error) {
-        setError("Account created but sign-in failed. Please log in.");
-        setLoading(false);
-      } else {
-        window.location.href = "/";
-      }
     } catch {
       setError("Something went wrong. Please try again.");
       setLoading(false);

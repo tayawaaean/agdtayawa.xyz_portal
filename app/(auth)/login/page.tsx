@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { signIn } from "next-auth/react";
 import { Button } from "@/components/ui/button";
@@ -15,32 +16,26 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Loader2, Mail, Lock } from "lucide-react";
+import { Suspense } from "react";
 
-export default function LoginPage() {
-  const [error, setError] = useState<string | null>(null);
+function LoginForm() {
+  const searchParams = useSearchParams();
+  const urlError = searchParams.get("error");
+  const [error, setError] = useState<string | null>(
+    urlError ? "Invalid email or password" : null
+  );
   const [loading, setLoading] = useState(false);
 
   async function handleLogin(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
     setLoading(true);
-    try {
-      const formData = new FormData(e.currentTarget);
-      const result = await signIn("credentials", {
-        email: formData.get("email") as string,
-        password: formData.get("password") as string,
-        redirect: false,
-      });
-      if (result?.error) {
-        setError("Invalid email or password");
-        setLoading(false);
-      } else {
-        window.location.href = "/";
-      }
-    } catch {
-      setError("Something went wrong. Please try again.");
-      setLoading(false);
-    }
+    const formData = new FormData(e.currentTarget);
+    await signIn("credentials", {
+      email: formData.get("email") as string,
+      password: formData.get("password") as string,
+      callbackUrl: "/",
+    });
   }
 
   return (
@@ -97,5 +92,13 @@ export default function LoginPage() {
         </p>
       </CardFooter>
     </Card>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginForm />
+    </Suspense>
   );
 }
