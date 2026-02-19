@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { signIn } from "@/lib/supabase/auth";
+import { signIn } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,6 +18,7 @@ import {
 import { Loader2, Mail, Lock } from "lucide-react";
 
 export default function LoginPage() {
+  const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -25,9 +27,17 @@ export default function LoginPage() {
     setError(null);
     setLoading(true);
     try {
-      const result = await signIn(new FormData(e.currentTarget));
+      const formData = new FormData(e.currentTarget);
+      const result = await signIn("credentials", {
+        email: formData.get("email") as string,
+        password: formData.get("password") as string,
+        redirect: false,
+      });
       if (result?.error) {
-        setError(result.error);
+        setError("Invalid email or password");
+      } else {
+        router.push("/");
+        router.refresh();
       }
     } catch {
       setError("Something went wrong. Please try again.");

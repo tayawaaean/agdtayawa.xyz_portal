@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { signIn } from "next-auth/react";
 import { signUp } from "@/lib/supabase/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +19,7 @@ import {
 import { Loader2, Mail, Lock, User } from "lucide-react";
 
 export default function SignupPage() {
+  const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -25,9 +28,28 @@ export default function SignupPage() {
     setError(null);
     setLoading(true);
     try {
-      const result = await signUp(new FormData(e.currentTarget));
+      const formData = new FormData(e.currentTarget);
+      const email = formData.get("email") as string;
+      const password = formData.get("password") as string;
+
+      // Create account via server action
+      const result = await signUp(formData);
       if (result?.error) {
         setError(result.error);
+        return;
+      }
+
+      // Sign in via client-side (properly sets cookies)
+      const signInResult = await signIn("credentials", {
+        email,
+        password,
+        redirect: false,
+      });
+      if (signInResult?.error) {
+        setError("Account created but sign-in failed. Please log in.");
+      } else {
+        router.push("/");
+        router.refresh();
       }
     } catch {
       setError("Something went wrong. Please try again.");
