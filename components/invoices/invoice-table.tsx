@@ -68,6 +68,7 @@ export function InvoiceTable({ invoices: initialInvoices }: InvoiceTableProps) {
   const [editStatus, setEditStatus] = useState<InvoiceStatus>("draft");
   const [editDueDate, setEditDueDate] = useState("");
   const [editNotes, setEditNotes] = useState("");
+  const [editExchangeRate, setEditExchangeRate] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
 
   // Realtime subscription for invoices table
@@ -166,6 +167,7 @@ export function InvoiceTable({ invoices: initialInvoices }: InvoiceTableProps) {
     setEditStatus(inv.status);
     setEditDueDate(inv.due_date || "");
     setEditNotes(inv.notes || "");
+    setEditExchangeRate(inv.exchange_rate ?? null);
   }
 
   async function handleEdit() {
@@ -178,6 +180,7 @@ export function InvoiceTable({ invoices: initialInvoices }: InvoiceTableProps) {
         status: editStatus,
         due_date: editDueDate || null,
         notes: editNotes || null,
+        exchange_rate: editExchangeRate || null,
       })
       .eq("id", editInvoice.id);
 
@@ -203,7 +206,7 @@ export function InvoiceTable({ invoices: initialInvoices }: InvoiceTableProps) {
       setInvoices((prev) =>
         prev.map((i) =>
           i.id === editInvoice.id
-            ? { ...i, status: editStatus, due_date: editDueDate || null, notes: editNotes || null }
+            ? { ...i, status: editStatus, due_date: editDueDate || null, notes: editNotes || null, exchange_rate: editExchangeRate || null }
             : i
         )
       );
@@ -543,6 +546,19 @@ export function InvoiceTable({ invoices: initialInvoices }: InvoiceTableProps) {
               <Label>Notes</Label>
               <Input value={editNotes} onChange={(e) => setEditNotes(e.target.value)} placeholder="Invoice notes" />
             </div>
+            {editInvoice?.currency && editInvoice.currency !== "PHP" && (
+              <div className="space-y-2">
+                <Label>Exchange Rate (1 {editInvoice.currency} = ? PHP)</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="e.g. 56.00"
+                  value={editExchangeRate ?? ""}
+                  onChange={(e) => setEditExchangeRate(e.target.value ? Number(e.target.value) : null)}
+                />
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditInvoice(null)}>Cancel</Button>

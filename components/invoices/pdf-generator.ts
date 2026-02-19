@@ -2,8 +2,8 @@ import { formatDate } from "@/lib/utils";
 import type { Invoice, InvoiceItem, Payment, Profile } from "@/lib/types";
 
 // jsPDF's built-in fonts don't support the ₱ symbol, so we use a plain-text formatter
-function pdfCurrency(amount: number): string {
-  return "PHP " + amount.toLocaleString("en-PH", {
+function pdfCurrency(amount: number, currencyCode: string = "PHP"): string {
+  return currencyCode + " " + amount.toLocaleString("en-PH", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
@@ -247,11 +247,11 @@ export async function generateInvoicePdf(
 
     // Unit price (normal)
     doc.setTextColor(0, 0, 0);
-    doc.text(pdfCurrency(item.unit_price), colPrice - cellPad, rowTextY, { align: "right" });
+    doc.text(pdfCurrency(item.unit_price, invoice.currency), colPrice - cellPad, rowTextY, { align: "right" });
 
     // Amount (bold, emphasized)
     doc.setFont("helvetica", "bold");
-    doc.text(pdfCurrency(item.amount), colAmount - cellPad, rowTextY, { align: "right" });
+    doc.text(pdfCurrency(item.amount, invoice.currency), colAmount - cellPad, rowTextY, { align: "right" });
 
     y += rowHeight;
   });
@@ -273,14 +273,14 @@ export async function generateInvoicePdf(
   doc.setTextColor(...GRAY);
   doc.text("Subtotal", totalsLabelX, y, { align: "right" });
   doc.setTextColor(0, 0, 0);
-  doc.text(pdfCurrency(invoice.subtotal), totalsValueX, y, { align: "right" });
+  doc.text(pdfCurrency(invoice.subtotal, invoice.currency), totalsValueX, y, { align: "right" });
   y += 5.5;
 
   if (invoice.tax_amount > 0) {
     doc.setTextColor(...GRAY);
     doc.text(`Tax (${(invoice.tax_rate * 100).toFixed(1)}%)`, totalsLabelX, y, { align: "right" });
     doc.setTextColor(0, 0, 0);
-    doc.text(pdfCurrency(invoice.tax_amount), totalsValueX, y, { align: "right" });
+    doc.text(pdfCurrency(invoice.tax_amount, invoice.currency), totalsValueX, y, { align: "right" });
     y += 5.5;
   }
 
@@ -293,9 +293,31 @@ export async function generateInvoicePdf(
   doc.setFontSize(9.5);
   doc.setTextColor(255, 255, 255);
   doc.text("Total", totalsLabelX, y + 1.5, { align: "right" });
-  doc.text(pdfCurrency(invoice.total), totalsValueX, y + 1.5, { align: "right" });
+  doc.text(pdfCurrency(invoice.total, invoice.currency), totalsValueX, y + 1.5, { align: "right" });
   doc.setTextColor(0, 0, 0);
   y += 12;
+
+  // PHP Equivalent (when exchange rate is set for non-PHP invoices)
+  if (invoice.currency !== "PHP" && invoice.exchange_rate) {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(...GRAY);
+    doc.text(
+      `1 ${invoice.currency} = ${invoice.exchange_rate} PHP`,
+      totalsLabelX,
+      y,
+      { align: "right" }
+    );
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(0, 0, 0);
+    doc.text(
+      pdfCurrency(invoice.total * invoice.exchange_rate, "PHP"),
+      totalsValueX,
+      y,
+      { align: "right" }
+    );
+    y += 8;
+  }
 
   // Payment balance
   const totalPaid = invoice.payments.reduce((sum, p) => sum + p.amount, 0);
@@ -305,7 +327,7 @@ export async function generateInvoicePdf(
     doc.setTextColor(...GRAY);
     doc.text("Amount Paid", totalsLabelX, y, { align: "right" });
     doc.setTextColor(...GREEN);
-    doc.text(`- ${pdfCurrency(totalPaid)}`, totalsValueX, y, { align: "right" });
+    doc.text(`- ${pdfCurrency(totalPaid, invoice.currency)}`, totalsValueX, y, { align: "right" });
     y += 5.5;
 
     doc.setDrawColor(...ACCENT);
@@ -316,7 +338,7 @@ export async function generateInvoicePdf(
     doc.setFontSize(9.5);
     doc.setTextColor(...ACCENT);
     doc.text("Balance Due", totalsLabelX, y + 2, { align: "right" });
-    doc.text(pdfCurrency(invoice.total - totalPaid), totalsValueX, y + 2, { align: "right" });
+    doc.text(pdfCurrency(invoice.total - totalPaid, invoice.currency), totalsValueX, y + 2, { align: "right" });
     doc.setTextColor(0, 0, 0);
     y += 10;
   }

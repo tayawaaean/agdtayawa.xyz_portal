@@ -3,7 +3,7 @@
 import { signIn as nextAuthSignIn, signOut as nextAuthSignOut } from "@/lib/auth";
 import { createClient } from "@supabase/supabase-js";
 import bcrypt from "bcryptjs";
-import { redirect } from "next/navigation";
+import { AuthError } from "next-auth";
 import { DEFAULT_EXPENSE_CATEGORIES } from "@/lib/constants";
 
 function getServiceClient() {
@@ -21,13 +21,14 @@ export async function signIn(formData: FormData) {
     await nextAuthSignIn("credentials", {
       email,
       password,
-      redirect: false,
+      redirectTo: "/",
     });
-  } catch {
-    return { error: "Invalid email or password" };
+  } catch (error) {
+    if (error instanceof AuthError) {
+      return { error: "Invalid email or password" };
+    }
+    throw error;
   }
-
-  redirect("/");
 }
 
 export async function signUp(formData: FormData) {
@@ -80,13 +81,14 @@ export async function signUp(formData: FormData) {
     await nextAuthSignIn("credentials", {
       email,
       password,
-      redirect: false,
+      redirectTo: "/",
     });
-  } catch {
-    return { error: "Account created but sign-in failed. Please log in." };
+  } catch (error) {
+    if (error instanceof AuthError) {
+      return { error: "Account created but sign-in failed. Please log in." };
+    }
+    throw error;
   }
-
-  redirect("/");
 }
 
 export async function signOut() {

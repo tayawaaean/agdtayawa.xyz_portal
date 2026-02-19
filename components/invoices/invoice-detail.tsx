@@ -358,6 +358,12 @@ export function InvoiceDetail({
               <span>Total</span>
               <span>{formatCurrency(invoice.total, invoice.currency)}</span>
             </div>
+            {invoice.currency !== "PHP" && invoice.exchange_rate && (
+              <div className="flex gap-8 text-muted-foreground">
+                <span>PHP Equivalent (1 {invoice.currency} = {invoice.exchange_rate} PHP)</span>
+                <span>{formatCurrency(invoice.total * invoice.exchange_rate, "PHP")}</span>
+              </div>
+            )}
             {totalPaid > 0 && (
               <>
                 <div className="flex gap-8 text-green-600">

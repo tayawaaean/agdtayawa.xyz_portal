@@ -100,6 +100,7 @@ export function InvoiceBuilder({
     contractData?.currency ?? milestoneData?.currency ?? profile?.default_currency ?? "PHP"
   );
   const [taxRate, setTaxRate] = useState(0);
+  const [exchangeRate, setExchangeRate] = useState<number | null>(null);
 
   function buildInitialItems(): LineItem[] {
     if (contractData) {
@@ -375,6 +376,7 @@ export function InvoiceBuilder({
         notes: notes || null,
         payment_terms: paymentTerms || null,
         currency,
+        exchange_rate: currency !== "PHP" ? exchangeRate : null,
       })
       .select()
       .single();
@@ -525,7 +527,7 @@ export function InvoiceBuilder({
                 />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className={`grid gap-3 ${currency !== "PHP" ? "grid-cols-3" : "grid-cols-2"}`}>
               <div className="space-y-2">
                 <Label>Payment Terms</Label>
                 <Input
@@ -535,7 +537,10 @@ export function InvoiceBuilder({
               </div>
               <div className="space-y-2">
                 <Label>Currency</Label>
-                <Select value={currency} onValueChange={setCurrency}>
+                <Select value={currency} onValueChange={(val) => {
+                  setCurrency(val);
+                  if (val === "PHP") setExchangeRate(null);
+                }}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
@@ -548,6 +553,19 @@ export function InvoiceBuilder({
                   </SelectContent>
                 </Select>
               </div>
+              {currency !== "PHP" && (
+                <div className="space-y-2">
+                  <Label>1 {currency} = ? PHP</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="e.g. 56.00"
+                    value={exchangeRate ?? ""}
+                    onChange={(e) => setExchangeRate(e.target.value ? Number(e.target.value) : null)}
+                  />
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -683,6 +701,12 @@ export function InvoiceBuilder({
               <span>Total</span>
               <span>{formatCurrency(total, currency)}</span>
             </div>
+            {currency !== "PHP" && exchangeRate && exchangeRate > 0 && (
+              <div className="flex gap-8 text-sm text-muted-foreground">
+                <span>PHP Equivalent</span>
+                <span>{formatCurrency(total * exchangeRate, "PHP")}</span>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>

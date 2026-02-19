@@ -24,9 +24,14 @@ export default function SignupPage() {
     e.preventDefault();
     setError(null);
     setLoading(true);
-    const result = await signUp(new FormData(e.currentTarget));
-    if (result?.error) {
-      setError(result.error);
+    try {
+      const result = await signUp(new FormData(e.currentTarget));
+      if (result?.error) {
+        setError(result.error);
+      }
+    } catch {
+      setError("Something went wrong. Please try again.");
+    } finally {
       setLoading(false);
     }
   }
