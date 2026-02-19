@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { signIn } from "next-auth/react";
 import { signUp } from "@/lib/supabase/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,12 +37,19 @@ export default function SignupPage() {
         return;
       }
 
-      // Sign in and redirect (let next-auth handle the redirect)
-      await signIn("credentials", {
-        email,
-        password,
-        callbackUrl: "/",
+      // Sign in via custom API route
+      const res = await fetch("/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
       });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Account created but sign-in failed. Please log in.");
+        setLoading(false);
+      } else {
+        window.location.href = "/";
+      }
     } catch {
       setError("Something went wrong. Please try again.");
       setLoading(false);
