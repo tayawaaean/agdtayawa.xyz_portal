@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { signIn } from "next-auth/react";
 import { signUp } from "@/lib/supabase/auth";
@@ -19,7 +18,6 @@ import {
 import { Loader2, Mail, Lock, User } from "lucide-react";
 
 export default function SignupPage() {
-  const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -36,6 +34,7 @@ export default function SignupPage() {
       const result = await signUp(formData);
       if (result?.error) {
         setError(result.error);
+        setLoading(false);
         return;
       }
 
@@ -47,13 +46,12 @@ export default function SignupPage() {
       });
       if (signInResult?.error) {
         setError("Account created but sign-in failed. Please log in.");
+        setLoading(false);
       } else {
-        router.push("/");
-        router.refresh();
+        window.location.href = "/";
       }
     } catch {
       setError("Something went wrong. Please try again.");
-    } finally {
       setLoading(false);
     }
   }

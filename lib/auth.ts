@@ -9,6 +9,7 @@ const supabase = createClient(
 );
 
 export const { auth, handlers, signIn, signOut } = NextAuth({
+  trustHost: true,
   providers: [
     Credentials({
       credentials: {
